@@ -13,8 +13,6 @@ Read the file at path: $ARGUMENTS
 
 Only read the summary section (title, stats line, and bullet points). **Ignore all questions, answers, and everything below the `---` separator.** Questions may have been generated from an older, weaker summary — they are not a reliable signal. Your review is purely about the summary bullets.
 
-Also read the reference file at `03-infrastructure/02-kubernetes.md` (summary section only) — it is the gold standard for bullet format, specificity, and coverage level.
-
 ## Context
 
 This knowledge base serves two audiences:
@@ -39,7 +37,7 @@ From the file title and path, determine:
 
 For each existing bullet, evaluate:
 - **Does it pass the calibration test?** Apply the Calibration Rules below.
-- **Is the detail level right?** Compare against the K8s reference file summary (`03-infrastructure/02-kubernetes.md`). Bullets should name specific concepts/tools, not be vague.
+- **Is the detail level right?** Bullets should name specific concepts/tools, not be vague.
 - **Is it redundant?** Does it overlap significantly with another bullet?
 
 ### Step 3: Identify Missing Concepts

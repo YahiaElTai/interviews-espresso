@@ -57,11 +57,7 @@ Before making any changes, output your plan:
 ```
 # Distill Plan: [File Name]
 
-## Bullets to KEEP (N of M)
-- [bullet text] — [why: foundational / commonly asked / essential for production / prerequisite]
-...
-
-## Bullets to CUT (N of M)
+## Bullets to CUT (N of M total)
 - [bullet text] — [why: niche / rarely asked / advanced optimization / nice-to-know]
 ...
 
@@ -78,6 +74,8 @@ Or: None — all experience questions are essential
 - Knowledge questions: M → N (cut X)
 - Experience questions: M → N (cut X)
 ```
+
+Only list what you're cutting — keeps are implicit (everything else). Don't waste tokens justifying keeps.
 
 **Then immediately proceed to Step 4.** Do not stop or wait for approval.
 
@@ -104,12 +102,18 @@ Review experience-based questions with the same principle:
 Edit the file in place using surgical delete operations. Do NOT rewrite the entire file — that wastes tokens. Instead, make targeted edits:
 
 1. **Delete cut summary bullets** — remove each cut bullet line from the summary section
-2. **Delete cut questions** — remove the entire `<details>...</details>` block for each dropped question (including the blank lines around it)
-3. **Delete empty sections** — if all questions under a section header were dropped, remove that section header too
-4. **Update the stats line** — edit the `> **N questions**...` line to reflect new counts
-5. **Renumber remaining questions** — update the number prefix in each remaining `<summary>` tag to be sequential (1, 2, 3, ...) with no gaps
+2. **Re-read the file** — line numbers have shifted after bullet deletions. You MUST re-read before proceeding.
+3. **Delete cut questions** — remove the entire `<details>...</details>` block for each dropped question (including the blank lines around it). Work from largest to smallest question number to minimize offset issues. Re-read periodically if making many deletions.
+4. **Delete empty sections** — if all questions under a section header were dropped, remove that section header too
+5. **Update the stats line** — edit the `> **N questions**...` line to reflect new counts
+6. **Renumber remaining questions** — use a Bash script to renumber all `<summary>` tags sequentially. This is far more efficient than individual Edit calls. Example approach:
+   ```bash
+   # Renumber all questions sequentially starting from 1
+   awk '/<summary>[0-9]+\./ { sub(/<summary>[0-9]+\./, "<summary>" ++n ".") } {print}' file > tmp && mv tmp file
+   ```
+   Verify the renumbering is correct by reading a section of the file afterward.
 
-**Order of edits**: Delete bullets first, then delete question blocks (largest to smallest question number to avoid offset issues), then clean up empty sections, then renumber, then update stats.
+**Order of edits**: Delete bullets → re-read → delete question blocks → clean up empty sections → update stats → renumber via script → verify.
 
 ## Quality Checks
 

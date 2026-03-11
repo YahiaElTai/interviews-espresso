@@ -13,8 +13,6 @@ Read the file at path: $ARGUMENTS
 
 Also read the question generation skill at: `.claude/skills/generate-questions/SKILL.md` — this contains all the rules the questions should comply with. Treat every rule as a requirement.
 
-Also read the reference implementation at: `03-infrastructure/02-kubernetes.md` — this is the gold standard for question quality and structure.
-
 ## Review Process
 
 You MUST check every rule below. For each check, either mark it as PASS or list specific violations with the question number(s) and a concrete fix suggestion.
@@ -197,4 +195,3 @@ After writing the file, output a short summary to the conversation: the file pat
 - If a check passes, explicitly mark it as **[PASS]** — don't skip it.
 - Do NOT rewrite or modify the questions file. Only write the report to the temp file.
 - Do NOT generate answers. You are reviewing questions only.
-- Compare quality against the Kubernetes reference file — if a question wouldn't meet that bar, flag it.

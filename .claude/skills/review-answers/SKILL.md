@@ -13,8 +13,6 @@ Read the file at path: $ARGUMENTS
 
 Also read the answer generation skill at: `.claude/skills/generate-answers/SKILL.md` — this contains all the rules the answers should comply with. Treat every rule as a requirement.
 
-Also read the reference implementation at: `03-infrastructure/02-kubernetes.md` — this is the gold standard for answer quality and depth. If it doesn't have answers yet, skip this reference and rely on the rules alone.
-
 ## Pre-Check
 
 Before reviewing, verify the file actually has answers to review:

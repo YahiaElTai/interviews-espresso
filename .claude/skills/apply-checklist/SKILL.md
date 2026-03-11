@@ -79,6 +79,12 @@ Edit the questions section (everything below the `---` separator):
 
 After all additions, renumber every question sequentially from 1 to N. Questions must be numbered continuously across all sections — no gaps, no restarts at section boundaries.
 
+Use a Bash script instead of individual Edit calls — far more efficient:
+```bash
+awk '/<summary>[0-9]+\./ { sub(/<summary>[0-9]+\./, "<summary>" ++n ".") } {print}' file > tmp && mv tmp file
+```
+Verify the renumbering is correct by reading a section of the file afterward.
+
 ### Step 7: Update Stats Line
 
 Recount all questions and update the stats line:

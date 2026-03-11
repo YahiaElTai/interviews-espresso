@@ -80,7 +80,11 @@ Replace incorrect placeholder text with the correct one:
 
 After all additions, removals, and splits, renumber every question sequentially from 1 to N. Questions must be numbered continuously across all sections — no gaps, no restarts at section boundaries.
 
-Update the number at the start of each `<summary>` tag: `<summary>N. Question text</summary>`
+Use a Bash script instead of individual Edit calls — far more efficient:
+```bash
+awk '/<summary>[0-9]+\./ { sub(/<summary>[0-9]+\./, "<summary>" ++n ".") } {print}' file > tmp && mv tmp file
+```
+Verify the renumbering is correct by reading a section of the file afterward.
 
 ### Step 4: Update the Stats Line
 

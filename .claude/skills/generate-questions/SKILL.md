@@ -7,10 +7,6 @@ disable-model-invocation: false
 
 You are generating questions for a senior fullstack/backend engineer knowledge base. Each file is a **mini-book** — when someone masters every question in a file, they should have 80-90% of the knowledge needed to pass any interview on that topic AND solve real-world problems in production.
 
-## Reference Implementation
-
-The Kubernetes file at `03-infrastructure/02-kubernetes.md` is the gold standard. Study its structure, question style, and progression before generating questions for any file. Every file you generate should match that level of quality and depth.
-
 ## Input
 
 Read the file at path: $ARGUMENTS
@@ -167,7 +163,7 @@ Split practical questions into 2-4 subsections with descriptive subtitles (see "
 - **Composition & Production** — Combine multiple concepts into production-ready setups. "Set up X with Y and Z working together."
 - **Debugging & Troubleshooting** — Real-world failure scenarios. "X is broken — walk through the exact commands/steps to diagnose and fix it." Mirror actual on-call situations.
 
-These are **guidelines, not rigid requirements**. Use 2 subsections for focused topics, 4 for broad ones. Name them based on what the questions actually cover (see the K8s reference for an example with 4 custom-named practical sections).
+These are **guidelines, not rigid requirements**. Use 2 subsections for focused topics, 4 for broad ones. Name them based on what the questions actually cover (e.g., K8s uses 4 custom-named practical sections).
 
 **For conceptual-heavy topics**: Collapse the practical sections. Instead of 3 separate practical subsections, use 1-2 combined practical sections (e.g., "Practical — Implementation & Debugging") and expand the Conceptual Depth section to 8-12 questions. The depth comes from understanding, not from config files.
 
