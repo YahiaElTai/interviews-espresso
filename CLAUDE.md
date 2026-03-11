@@ -1,14 +1,12 @@
 # Interview Espresso
 
-Essential interview prep — distilled from the comprehensive [interviews](https://github.com/YahiaElTai/interviews) repo. Same answer quality, ~70-80% of the scope.
+Essential interview prep — distilled from the comprehensive [interviews](https://github.com/YahiaElTai/interviews) repo. Same answer quality, ~60-70% of the scope.
 
 See [README.md](README.md) for the full project description, the 5 Pillars, file format, and topic structure.
 
 ## Content Generation Rules
 
 ### Question Progression
-
-Same as the main repo:
 
 - **`01-core-stack/`**: Start at mid-level and progress to senior-level depth.
 - **`02-data/`**: Start at mid-level and progress to senior-level depth.
@@ -29,13 +27,23 @@ Same as the main repo:
 
 ## Agents & Skills
 
-This repo shares agents and skills with the main interviews repo (defined in `.claude/agents/` and `.claude/skills/` there). The key agents used here:
+This repo uses dedicated **agents** (`.claude/agents/`) to execute **skills** (`.claude/skills/`). Each agent is a specialized subagent with its own system prompt, tool restrictions, and model pinning (Opus). Skills define the rules; agents are the execution layer.
+
+**Always use agents to execute skills** — do not run skills directly in the main conversation. Delegate to the appropriate agent instead. This keeps the main context clean and ensures consistent, high-quality output.
 
 | Agent | What it does |
 |---|---|
-| `distill` | Trims a topic file to essential ~70-80% scope — removes niche summary bullets and their corresponding questions. |
-| `generate-answers` | Fills in senior-level answers for all questions. Batches of 10, resumable. Uses context7 for accuracy. |
-| `review-answers` | Reviews answers for quality, compliance with the 5 Pillars. Outputs an answer review report. |
-| `fix-answers` | Applies answer review report fixes to a topic file's answers, then deletes the report. |
+| `distill` | Surgically trims a topic file to essential 60-70% scope — deletes niche summary bullets and their corresponding questions. |
+| `review-summary` | Reviews summary bullets for completeness. Ensures important concepts are covered without going too niche. |
+| `fix-summary` | Applies coverage report fixes to a topic file's summary bullets, then deletes the report. |
+| `generate-questions` | Generates 20-40 interview questions from a file's summary bullets. |
+| `review-questions` | Reviews questions for quality, compliance with guidelines, and structural correctness. Outputs a violation report. |
+| `fix-questions` | Applies violation report fixes to a topic file's questions (splits, adds, removes, rewrites), then deletes the report. |
+| `apply-checklist` | Cross-references a topic file against `checklists.md` and applies missing coverage — adds summary bullets and questions in one pass. |
+| `generate-answers` | Fills in senior-level answers for all questions. Batches of 10, stops after each batch. Resumable — skips already-answered questions. Uses context7 for accuracy. |
+| `review-answers` | Reviews answers for quality, compliance with the 5 Pillars. Outputs an answer review report. Uses context7 for accuracy checks. |
+| `fix-answers` | Applies answer review report fixes to a topic file's answers, then deletes the report. Uses context7 for accuracy verification. |
 
-**Workflow**: Distill (from main repo) → Generate answers → Review answers → Fix answers.
+**Espresso workflow**: Distill → Generate answers → Review answers → Fix answers.
+
+**Full workflow** (if needed): Review summary → Fix summary → Generate questions → Review questions → Fix questions → Apply checklist → Generate answers → Review answers → Fix answers.
