@@ -1,6 +1,6 @@
 # Software Architecture
 
-> **24 questions** — 16 theory, 8 practical
+> **20 questions** — 13 theory, 7 practical
 
 - Problems without architecture: coupling explosion, circular dependencies, untestable code, what breaks as codebases grow
 - Dependency Rule: why dependencies must point inward toward higher-level policy, how dependency inversion (not injection) enforces this at the architectural level, relationship to all layered architecture styles
@@ -10,7 +10,6 @@
 - Hexagonal architecture: ports and adapters, how it differs from clean architecture in practice, repository pattern as a canonical adapter example
 - DDD core: entities, value objects, aggregates, aggregate boundary rules, domain events
 - Bounded contexts: identification, mapping to codebases and teams, context mapping, anti-corruption layers, Conway's Law and how org structure shapes boundaries
-- Twelve-Factor App: key principles that shape backend service design and deployment
 - Monolith first: why starting with microservices is premature, well-structured monolith design
 - Modular monolith: explicit module boundaries, internal APIs, path to microservice extraction
 - Pragmatic architecture: right-sizing complexity to team size and stage, signs of over-engineering (unused abstractions, layers with no logic), architecture as a tool not a goal
@@ -78,56 +77,35 @@
 </details>
 
 <details>
-<summary>9. What is context mapping and why do you need it when bounded contexts interact — explain the key relationship types (shared kernel, customer-supplier, conformist, anti-corruption layer), when you would choose each, and why anti-corruption layers are critical at boundaries where models diverge?</summary>
+<summary>9. What is the repository pattern — why does it define an interface in the domain layer but implement it in the infrastructure layer, how does this apply dependency inversion, and what problems emerge when repositories leak infrastructure concerns (query builders, ORM types) into the domain?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>10. What is the repository pattern — why does it define an interface in the domain layer but implement it in the infrastructure layer, how does this apply dependency inversion, and what problems emerge when repositories leak infrastructure concerns (query builders, ORM types) into the domain?</summary>
+<summary>10. Why is "monolith first" considered the pragmatic default — what goes wrong when teams start with microservices before understanding their domain boundaries, what does a well-structured monolith look like, and how does it differ from a "big ball of mud"?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>11. Which Twelve-Factor App principles cause the most operational pain when violated in backend services — pick the 3-4 that matter most in your experience (e.g., config, backing services, disposability, dev/prod parity), explain why each matters, and describe what goes wrong in production when teams ignore them?</summary>
+<summary>11. What is a modular monolith — how do you enforce explicit module boundaries and internal APIs within a single deployable, what rules prevent modules from becoming coupled, and how does this architecture create a clean extraction path to microservices when the time comes?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>12. Why is "monolith first" considered the pragmatic default — what goes wrong when teams start with microservices before understanding their domain boundaries, what does a well-structured monolith look like, and how does it differ from a "big ball of mud"?</summary>
+<summary>12. What does pragmatic architecture mean in practice — how do you right-size architecture decisions for your team's size and codebase complexity, what are the concrete signs of over-engineering (premature abstraction, unnecessary indirection, pattern stuffing), and when is "good enough" the right call?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>13. What is a modular monolith — how do you enforce explicit module boundaries and internal APIs within a single deployable, what rules prevent modules from becoming coupled, and how does this architecture create a clean extraction path to microservices when the time comes?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>14. How does Conway's Law influence software architecture — why do system boundaries tend to mirror organizational structure, how does this affect bounded context boundaries in practice, and should you fight Conway's Law or use it to your advantage (inverse Conway maneuver)?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>15. What does pragmatic architecture mean in practice — how do you right-size architecture decisions for your team's size and codebase complexity, what are the concrete signs of over-engineering (premature abstraction, unnecessary indirection, pattern stuffing), and when is "good enough" the right call?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>16. Why should testability be treated as an architectural driver rather than an afterthought — how does dependency inversion enable test doubles at layer boundaries, what is the practical difference between testing pure domain logic and infrastructure-dependent code, and how do you choose which architectural boundaries become test boundaries?</summary>
+<summary>13. Why should testability be treated as an architectural driver rather than an afterthought — how does dependency inversion enable test doubles at layer boundaries, what is the practical difference between testing pure domain logic and infrastructure-dependent code, and how do you choose which architectural boundaries become test boundaries?</summary>
 
 <!-- Answer will be added later -->
 
@@ -136,35 +114,28 @@
 ## Practical — Implementation & Refactoring
 
 <details>
-<summary>17. Show how you would structure a TypeScript/Node.js project using clean or hexagonal architecture — lay out the directory structure, show a concrete example of an entity, a use case, a port (interface), and an adapter (implementation), and explain how the dependency rule is enforced at the code level so that inner layers never import from outer layers.</summary>
+<summary>14. Show how you would structure a TypeScript/Node.js project using clean or hexagonal architecture — lay out the directory structure, show a concrete example of an entity, a use case, a port (interface), and an adapter (implementation), and explain how the dependency rule is enforced at the code level so that inner layers never import from outer layers.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>18. Implement the repository pattern in TypeScript with dependency inversion — show the domain-layer interface, an infrastructure-layer implementation (e.g., using Prisma or a plain SQL client), and demonstrate how the application service depends only on the interface. Explain how this makes the service testable with a fake/mock repository.</summary>
+<summary>15. Implement the repository pattern in TypeScript with dependency inversion — show the domain-layer interface, an infrastructure-layer implementation (e.g., using Prisma or a plain SQL client), and demonstrate how the application service depends only on the interface. Explain how this makes the service testable with a fake/mock repository.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>19. Define an aggregate in TypeScript with proper boundary enforcement — show an aggregate root with child entities/value objects, enforce invariants inside the aggregate (e.g., order line quantity limits, total price validation), emit a domain event, and explain why external code should never modify child entities directly.</summary>
+<summary>16. Define an aggregate in TypeScript with proper boundary enforcement — show an aggregate root with child entities/value objects, enforce invariants inside the aggregate (e.g., order line quantity limits, total price validation), emit a domain event, and explain why external code should never modify child entities directly.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>20. Show how you would set up a modular monolith in TypeScript — demonstrate explicit module boundaries (what each module exposes vs hides), the internal API surface between modules, and the rules you enforce (no direct database access across modules, no importing internal types). Explain how this structure makes future extraction to microservices straightforward.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>21. You inherit a tangled codebase where controllers contain business logic, database queries are scattered everywhere, and there are circular dependencies between modules — walk through a concrete refactoring strategy to introduce layered architecture incrementally, show before/after code for one slice, and explain how you avoid a risky big-bang rewrite.</summary>
+<summary>17. Show how you would set up a modular monolith in TypeScript — demonstrate explicit module boundaries (what each module exposes vs hides), the internal API surface between modules, and the rules you enforce (no direct database access across modules, no importing internal types). Explain how this structure makes future extraction to microservices straightforward.</summary>
 
 <!-- Answer will be added later -->
 
@@ -177,21 +148,21 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>22. Tell me about a time you chose or changed the architectural style for a project — what were the constraints (team size, complexity, timeline), what did you choose and why, and what would you do differently with hindsight?</summary>
+<summary>18. Tell me about a time you chose or changed the architectural style for a project — what were the constraints (team size, complexity, timeline), what did you choose and why, and what would you do differently with hindsight?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>23. Tell me about a time you dealt with a poorly architected codebase — what were the symptoms, how did it impact the team's velocity, and what steps did you take to improve it without stopping feature work?</summary>
+<summary>19. Tell me about a time you dealt with a poorly architected codebase — what were the symptoms, how did it impact the team's velocity, and what steps did you take to improve it without stopping feature work?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>24. Describe a time you applied DDD concepts (aggregates, bounded contexts, domain events) to structure a complex domain — how did you identify the domain boundaries, what modeling decisions were hardest, and how did the architecture hold up as requirements evolved?</summary>
+<summary>20. Describe a time you applied DDD concepts (aggregates, bounded contexts, domain events) to structure a complex domain — how did you identify the domain boundaries, what modeling decisions were hardest, and how did the architecture hold up as requirements evolved?</summary>
 
 <!-- Answer framework will be added later -->
 

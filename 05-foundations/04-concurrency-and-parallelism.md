@@ -1,6 +1,6 @@
 # Concurrency & Parallelism
 
-> **22 questions** — 14 theory, 8 practical
+> **20 questions** — 13 theory, 7 practical
 
 - Concurrency vs parallelism: definitions, single-core interleaving vs multi-core execution, how Node.js achieves concurrency without parallelism
 - Concurrency hazards: race conditions, deadlocks, starvation, livelocks
@@ -86,35 +86,28 @@
 </details>
 
 <details>
-<summary>10. What are the subtle bugs and error propagation differences across callbacks, Promises, and async/await -- how do lost stack traces with Promises, unhandled rejections with async/await, and swallowed errors in callbacks each manifest differently in production, and what defensive patterns prevent each?</summary>
+<summary>10. When should you use Worker threads in Node.js instead of other concurrency options — how does main thread/worker communication work, what is the difference between transferring data via structured clone (message passing) vs SharedArrayBuffer, and what are the tradeoffs and pitfalls of each approach?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>11. When should you use Worker threads in Node.js instead of other concurrency options — how does main thread/worker communication work, what is the difference between transferring data via structured clone (message passing) vs SharedArrayBuffer, and what are the tradeoffs and pitfalls of each approach?</summary>
+<summary>11. What is backpressure, why does the fast producer / slow consumer problem cause memory exhaustion, how do Node.js streams handle backpressure automatically, and what happens when you ignore backpressure signals — why is this one of the most common causes of Node.js memory issues in production?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>12. What is backpressure, why does the fast producer / slow consumer problem cause memory exhaustion, how do Node.js streams handle backpressure automatically, and what happens when you ignore backpressure signals — why is this one of the most common causes of Node.js memory issues in production?</summary>
+<summary>12. Why is unbounded concurrency dangerous when running many async operations simultaneously — what happens when you fire off thousands of concurrent HTTP requests or database queries without a concurrency limit, how does this differ from backpressure in streams, and what patterns exist to control the level of concurrency?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>13. Why is unbounded concurrency dangerous when running many async operations simultaneously — what happens when you fire off thousands of concurrent HTTP requests or database queries without a concurrency limit, how does this differ from backpressure in streams, and what patterns exist to control the level of concurrency?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>14. What are the four Promise combinators (all, allSettled, race, any), how does each one behave when some promises resolve and others reject, and when does each one fit — why does the difference between all and allSettled matter for production error handling, and when would you choose race over any?</summary>
+<summary>13. What are the four Promise combinators (all, allSettled, race, any), how does each one behave when some promises resolve and others reject, and when does each one fit — why does the difference between all and allSettled matter for production error handling, and when would you choose race over any?</summary>
 
 <!-- Answer will be added later -->
 
@@ -123,35 +116,28 @@
 ## Practical — Implementation & Patterns
 
 <details>
-<summary>15. Given two concurrent Express request handlers that both read a user's balance, check if it's sufficient, and then deduct an amount — show the TypeScript code that demonstrates the race condition (check-then-act), explain exactly how two requests interleave across await boundaries to produce a lost update, and then show how to fix it using an async mutex or database-level locking</summary>
+<summary>14. Given two concurrent Express request handlers that both read a user's balance, check if it's sufficient, and then deduct an amount — show the TypeScript code that demonstrates the race condition (check-then-act), explain exactly how two requests interleave across await boundaries to produce a lost update, and then show how to fix it using an async mutex or database-level locking</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>16. Implement an async mutex and a queue-per-key pattern in TypeScript — show how the mutex serializes access to a shared resource, show how queue-per-key ensures operations on the same entity (e.g., same user ID) run sequentially while different entities run concurrently, and explain why this is the Node.js equivalent of fine-grained locking</summary>
+<summary>15. Implement an async mutex and a queue-per-key pattern in TypeScript — show how the mutex serializes access to a shared resource, show how queue-per-key ensures operations on the same entity (e.g., same user ID) run sequentially while different entities run concurrently, and explain why this is the Node.js equivalent of fine-grained locking</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>17. Write TypeScript examples that demonstrate when to use each Promise combinator (all, allSettled, race, any) — show a real scenario for each one, demonstrate how each handles partial failures differently, and show the error handling patterns that prevent silent failures in production</summary>
+<summary>16. Write TypeScript examples that demonstrate when to use each Promise combinator (all, allSettled, race, any) — show a real scenario for each one, demonstrate how each handles partial failures differently, and show the error handling patterns that prevent silent failures in production</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>18. Implement a concurrency limiter in TypeScript that processes an array of async tasks with a maximum number of concurrent operations — show the implementation, demonstrate what happens without the limiter (memory exhaustion, connection pool saturation), and explain how libraries like p-limit solve this in production</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>19. Show how to offload CPU-intensive work to a Worker thread in Node.js — write the TypeScript code for both the main thread and the worker, demonstrate data transfer via message passing (postMessage) and via SharedArrayBuffer, and explain the serialization overhead tradeoff between the two approaches</summary>
+<summary>17. Implement a concurrency limiter in TypeScript that processes an array of async tasks with a maximum number of concurrent operations — show the implementation, demonstrate what happens without the limiter (memory exhaustion, connection pool saturation), and explain how libraries like p-limit solve this in production</summary>
 
 <!-- Answer will be added later -->
 
@@ -164,21 +150,21 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>20. Tell me about a time you encountered a concurrency bug in production — a race condition, deadlock, or data inconsistency caused by concurrent operations — how did you discover it, how did you reproduce and diagnose the root cause, and what did you change to prevent it from happening again?</summary>
+<summary>18. Tell me about a time you encountered a concurrency bug in production — a race condition, deadlock, or data inconsistency caused by concurrent operations — how did you discover it, how did you reproduce and diagnose the root cause, and what did you change to prevent it from happening again?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>21. Describe a time you had to handle CPU-bound work in a Node.js application — what was the workload, what symptoms told you the event loop was being blocked, and what solution did you choose (worker threads, child processes, separate service) and why?</summary>
+<summary>19. Describe a time you had to handle CPU-bound work in a Node.js application — what was the workload, what symptoms told you the event loop was being blocked, and what solution did you choose (worker threads, child processes, separate service) and why?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>22. Tell me about a time you dealt with backpressure, memory exhaustion, or uncontrolled concurrency in a Node.js service — what caused the problem, how did you detect it, and what changes did you make to bring the system under control?</summary>
+<summary>20. Tell me about a time you dealt with backpressure, memory exhaustion, or uncontrolled concurrency in a Node.js service — what caused the problem, how did you detect it, and what changes did you make to bring the system under control?</summary>
 
 <!-- Answer framework will be added later -->
 

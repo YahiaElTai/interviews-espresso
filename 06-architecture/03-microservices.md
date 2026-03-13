@@ -1,6 +1,6 @@
 # Microservices
 
-> **24 questions** — 12 theory, 8 practical, 4 experience
+> **20 questions** — 12 theory, 5 practical, 3 experience
 
 - Monolith vs microservices: honest tradeoffs and "monolith first"
 - Conway's Law and how team structure shapes service decomposition
@@ -137,30 +137,7 @@
 ## Practical — Migration & Deployment
 
 <details>
-<summary>17. Set up independent deployment with API versioning — show how to version an API (URL path versioning or header versioning), implement a backward-compatible change (adding a field) and a breaking change (removing a field) with proper deprecation, and define the rollback criteria and process</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>18. You suspect your microservice architecture has become a distributed monolith -- two services must always deploy together and one service makes 15+ synchronous calls to another per request. Walk through how you would diagnose the coupling (dependency mapping, deploy frequency analysis, call graph tracing), identify which boundary is wrong, and refactor toward proper service independence without a big-bang rewrite.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-## Practical — Testing & Observability
-
-<details>
-<summary>19. Implement distributed tracing and correlation IDs across three services in a request chain — show how the first service generates a correlation ID, how it propagates through HTTP headers and message headers, how each service includes it in structured logs, and how you use the trace to debug a slow request</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>20. A request that spans three services is intermittently timing out — walk through the debugging process using distributed traces: identify which service is slow, check if it's a cascading failure (one slow service backing up the others), determine if the circuit breaker should have tripped, and apply the fix</summary>
+<summary>17. You suspect your microservice architecture has become a distributed monolith -- two services must always deploy together and one service makes 15+ synchronous calls to another per request. Walk through how you would diagnose the coupling (dependency mapping, deploy frequency analysis, call graph tracing), identify which boundary is wrong, and refactor toward proper service independence without a big-bang rewrite.</summary>
 
 <!-- Answer will be added later -->
 
@@ -173,28 +150,21 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>21. Tell me about a time you decomposed a monolith into microservices (or decided not to) — what drove the decision, how did you identify service boundaries, and what challenges did you face during the migration?</summary>
+<summary>18. Tell me about a time you decomposed a monolith into microservices (or decided not to) — what drove the decision, how did you identify service boundaries, and what challenges did you face during the migration?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>22. Describe a cascading failure you experienced in a microservice architecture — what triggered it, how did you diagnose the chain of failures, and what resilience patterns did you add to prevent recurrence?</summary>
+<summary>19. Describe a cascading failure you experienced in a microservice architecture — what triggered it, how did you diagnose the chain of failures, and what resilience patterns did you add to prevent recurrence?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>23. Tell me about a time you had to debug a problem that spanned multiple microservices — what tools and techniques did you use, how long did it take, and what observability improvements did you make afterward?</summary>
-
-<!-- Answer framework will be added later -->
-
-</details>
-
-<details>
-<summary>24. Describe a time you dealt with a data consistency issue across microservices — what was the scenario, how did you handle it (saga, eventual consistency, compensating action), and what would you do differently?</summary>
+<summary>20. Describe a time you dealt with a data consistency issue across microservices — what was the scenario, how did you handle it (saga, eventual consistency, compensating action), and what would you do differently?</summary>
 
 <!-- Answer framework will be added later -->
 

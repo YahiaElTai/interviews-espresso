@@ -1,6 +1,6 @@
 # Event-Driven Architecture
 
-> **21 questions** — 11 theory, 6 practical, 4 experience
+> **20 questions** — 11 theory, 5 practical, 4 experience
 
 - Event-driven architecture vs synchronous request-response: decoupling benefits, eventual consistency tradeoffs, debugging complexity
 - Core building blocks: events, commands, producers, consumers, brokers, topics/queues
@@ -120,21 +120,14 @@
 </details>
 
 <details>
-<summary>15. Implement a saga using orchestration for the same order workflow — show the orchestrator that directs each step, handles responses, and triggers compensation on failure. Compare this with the choreography version: which is easier to understand, debug, and extend?</summary>
+<summary>15. Implement CQRS with a read model projection — show a write side that publishes events on state changes, a projection that listens to events and builds a denormalized read model, and the query handler that reads from the projection. Demonstrate the eventual consistency gap and how to handle it from the client's perspective</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>16. Implement CQRS with a read model projection — show a write side that publishes events on state changes, a projection that listens to events and builds a denormalized read model, and the query handler that reads from the projection. Demonstrate the eventual consistency gap and how to handle it from the client's perspective</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>17. Implement event schema evolution for an event-sourced system — show how to version event types, handle backward-compatible changes (adding optional fields) vs breaking changes (renaming fields), and demonstrate how a consumer handles both v1 and v2 of an event during the migration period</summary>
+<summary>16. Implement event schema evolution for an event-sourced system — show how to version event types, handle backward-compatible changes (adding optional fields) vs breaking changes (renaming fields), and demonstrate how a consumer handles both v1 and v2 of an event during the migration period</summary>
 
 <!-- Answer will be added later -->
 
@@ -147,28 +140,28 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>18. Tell me about a time you introduced event-driven architecture to a system — what problem were you solving, what did you choose (event sourcing, CQRS, simple pub/sub), and what unexpected challenges did you encounter?</summary>
+<summary>17. Tell me about a time you introduced event-driven architecture to a system — what problem were you solving, what did you choose (event sourcing, CQRS, simple pub/sub), and what unexpected challenges did you encounter?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>19. Describe a time you debugged a complex issue in an event-driven system — how did you trace the problem across services, what tools did you use, and what observability improvements did you add afterward?</summary>
+<summary>18. Describe a time you debugged a complex issue in an event-driven system — how did you trace the problem across services, what tools did you use, and what observability improvements did you add afterward?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>20. Tell me about a time you dealt with message ordering, duplication, or data consistency issues in an async system — what was the problem, how did you solve it, and what patterns did you adopt to prevent recurrence?</summary>
+<summary>19. Tell me about a time you dealt with message ordering, duplication, or data consistency issues in an async system — what was the problem, how did you solve it, and what patterns did you adopt to prevent recurrence?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>21. Describe a time you had to choose between choreography and orchestration for a distributed workflow — what were the requirements, what did you choose, and looking back, was it the right call?</summary>
+<summary>20. Describe a time you had to choose between choreography and orchestration for a distributed workflow — what were the requirements, what did you choose, and looking back, was it the right call?</summary>
 
 <!-- Answer framework will be added later -->
 
