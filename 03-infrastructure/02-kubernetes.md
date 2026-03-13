@@ -1,6 +1,6 @@
 # Kubernetes
 
-> **32 questions** — 10 theory, 18 practical, 4 experience
+> **26 questions** — 10 theory, 12 practical, 4 experience
 
 - Core primitives: Pods, Deployments, Services, Namespaces — and why K8s separates them
 - Control plane architecture: API server, etcd, scheduler, controller manager — failure modes
@@ -21,7 +21,6 @@
 - Ingress: TLS termination with cert-manager, ACME flow, rate limiting
 - Helm: chart architecture, values overrides, hooks for migrations, Helm vs Kustomize
 - Production debugging: CrashLoopBackOff, Pending pods, OOMKilled, service-to-service networking failures, ephemeral containers (kubectl debug)
-- Day-to-day kubectl workflows, multi-cluster context management, and k9s
 
 ---
 
@@ -99,75 +98,48 @@
 
 </details>
 
-## Practical — Single Resource Configuration
-
-<details>
-<summary>11. Two microservices need to communicate within the same cluster — show how to set up the Deployments and ClusterIP Services so Service A can call Service B reliably, explain the DNS naming convention (service.namespace.svc.cluster.local), when to use the short name vs the FQDN, and what best practices ensure this communication is resilient (retries, timeouts, readiness gates)</summary>
+## Practical — Single Resource Configuration<details>
+<summary>11. Configure a Deployment that reads configuration from both a ConfigMap (as environment variables) and a Secret (as a mounted volume) — show the YAML for all three resources, explain when you'd choose env vars vs volume mounts, how you handle multiple environments, and what happens if the ConfigMap changes while pods are running</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>12. Configure a Deployment that reads configuration from both a ConfigMap (as environment variables) and a Secret (as a mounted volume) — show the YAML for all three resources, explain when you'd choose env vars vs volume mounts, how you handle multiple environments, and what happens if the ConfigMap changes while pods are running</summary>
+<summary>12. When do you use init containers vs the sidecar pattern — show a pod spec that uses an init container to run a database migration before the main app starts, and a sidecar for log shipping or a proxy (e.g., Envoy). Explain the lifecycle differences (init runs to completion sequentially, sidecar runs for the pod's lifetime), what problems each pattern solves, and when you'd use one over the other.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>13. When do you use init containers vs the sidecar pattern — show a pod spec that uses an init container to run a database migration before the main app starts, and a sidecar for log shipping or a proxy (e.g., Envoy). Explain the lifecycle differences (init runs to completion sequentially, sidecar runs for the pod's lifetime), what problems each pattern solves, and when you'd use one over the other.</summary>
+<summary>13. Configure resource requests and limits for a Deployment, then set up a LimitRange and ResourceQuota for a namespace — show the YAML for all three, explain the difference between requests and limits, what happens when a container exceeds its memory limit vs CPU limit, how requests and limits determine a pod's QoS class (Guaranteed, Burstable, BestEffort) and its eviction priority, and why getting requests wrong causes scheduling failures and noisy-neighbor issues</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>14. Configure resource requests and limits for a Deployment, then set up a LimitRange and ResourceQuota for a namespace — show the YAML for all three, explain the difference between requests and limits, what happens when a container exceeds its memory limit vs CPU limit, how requests and limits determine a pod's QoS class (Guaranteed, Burstable, BestEffort) and its eviction priority, and why getting requests wrong causes scheduling failures and noisy-neighbor issues</summary>
+<summary>14. Configure RBAC so a CI/CD pipeline's service account can deploy to a specific namespace but nothing else — show the ServiceAccount, Role, and RoleBinding YAML, explain the difference between Role and ClusterRole, and identify the common over-permissioning mistakes teams make (wildcard verbs, cluster-admin for CI, overly broad ServiceAccounts)</summary>
+
+<!-- Answer will be added later -->
+
+</details>## Practical — Multi-Resource Composition
+
+<details>
+<summary>15. Set up a HorizontalPodAutoscaler that scales on both CPU utilization and a custom metric (e.g., queue depth) — show the YAML, explain how HPA calculates the desired replica count using the scaling formula, and what happens when multiple metrics disagree on the target replica count</summary>
+
+<!-- Answer will be added later -->
+
+</details><details>
+<summary>16. Configure a zero-downtime deployment — show the Deployment spec with rolling update strategy (maxUnavailable/maxSurge), a PodDisruptionBudget, and a pod spec with a preStop hook and proper connection draining. Explain why you need each piece, how to set terminationGracePeriodSeconds correctly, and what happens to in-flight requests without these configurations</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>15. Configure RBAC so a CI/CD pipeline's service account can deploy to a specific namespace but nothing else — show the ServiceAccount, Role, and RoleBinding YAML, explain the difference between Role and ClusterRole, and identify the common over-permissioning mistakes teams make (wildcard verbs, cluster-admin for CI, overly broad ServiceAccounts)</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>16. Set up persistent storage for a StatefulSet using a PersistentVolumeClaim and a StorageClass with dynamic provisioning — show the YAML and explain what happens when a pod with a PVC is rescheduled to a different node, and when you'd use ReadWriteOnce vs ReadWriteMany access modes</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-## Practical — Multi-Resource Composition
-
-<details>
-<summary>17. Set up a HorizontalPodAutoscaler that scales on both CPU utilization and a custom metric (e.g., queue depth) — show the YAML, explain how HPA calculates the desired replica count using the scaling formula, and what happens when multiple metrics disagree on the target replica count</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>18. Compare HPA and VPA — what problem does each solve, when would you use them together, and what conflicts arise when both try to adjust the same workload?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>19. Configure a zero-downtime deployment — show the Deployment spec with rolling update strategy (maxUnavailable/maxSurge), a PodDisruptionBudget, and a pod spec with a preStop hook and proper connection draining. Explain why you need each piece, how to set terminationGracePeriodSeconds correctly, and what happens to in-flight requests without these configurations</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>20. Set up an Ingress with TLS termination using cert-manager — show the Ingress YAML, the Certificate and Issuer resources, explain the ACME flow (how cert-manager obtains and renews a Let's Encrypt certificate via HTTP-01 or DNS-01 challenge), and how to add rate limiting via Ingress annotations.</summary>
+<summary>17. Set up an Ingress with TLS termination using cert-manager — show the Ingress YAML, the Certificate and Issuer resources, explain the ACME flow (how cert-manager obtains and renews a Let's Encrypt certificate via HTTP-01 or DNS-01 challenge), and how to add rate limiting via Ingress annotations.</summary>
 
 <!-- Answer will be added later -->
 
@@ -176,58 +148,35 @@
 ## Practical — Helm & Tooling
 
 <details>
-<summary>21. Walk through the structure of a Helm chart — show the directory layout, explain what Chart.yaml, values.yaml, and templates/ contain, demonstrate how values overrides work (--set vs -f values files), and how you manage different configurations across environments (dev, staging, production)</summary>
+<summary>18. Walk through the structure of a Helm chart — show the directory layout, explain what Chart.yaml, values.yaml, and templates/ contain, demonstrate how values overrides work (--set vs -f values files), and how you manage different configurations across environments (dev, staging, production)</summary>
+
+<!-- Answer will be added later -->
+
+</details>## Practical — Debugging & Troubleshooting
+
+<details>
+<summary>19. A pod is stuck in CrashLoopBackOff — walk through the exact kubectl commands to diagnose the root cause step by step: checking pod status, reading events, pulling logs from the previous crashed container, interpreting exit codes, and using ephemeral containers (kubectl debug) when the container has no shell or debugging tools. What are the most common causes and how do you fix each?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>22. How do Helm hooks work for running tasks like database migrations during a deployment — show the hook annotations, explain the hook lifecycle (pre-install, pre-upgrade, post-upgrade), what happens when a hook fails, and compare Helm vs Kustomize for managing Kubernetes manifests — when would you choose one over the other?</summary>
+<summary>20. A pod has been Pending for 10 minutes and won't schedule — walk through the exact steps to diagnose why: checking scheduler events, identifying resource constraints vs node selector mismatches vs taint issues vs PVC binding failures. What are the common fixes for each cause?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>23. Walk through the kubectl commands you use daily for deploying, inspecting, and troubleshooting — show how you roll out a deployment, check pod logs and events, exec into a running container, tail logs across multiple pods, and quickly find why a pod isn't starting. What productivity shortcuts (aliases, autocompletion, -o formatting) make kubectl efficient?</summary>
+<summary>21. A container keeps getting OOMKilled — walk through how you detect this (pod describe, events, exit code 137), how you determine whether the memory limit is too low or the application has a genuine memory leak, and what the fix looks like for each case</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>24. How do you manage multiple Kubernetes clusters and contexts — show how kubeconfig is structured, walk through the exact commands for switching contexts safely (avoiding accidental production commands), demonstrate how you'd set up aliases or kubectx to prevent mistakes, and when does k9s give you an advantage over raw kubectl for navigating and inspecting resources in real time?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-## Practical — Debugging & Troubleshooting
-
-<details>
-<summary>25. A pod is stuck in CrashLoopBackOff — walk through the exact kubectl commands to diagnose the root cause step by step: checking pod status, reading events, pulling logs from the previous crashed container, interpreting exit codes, and using ephemeral containers (kubectl debug) when the container has no shell or debugging tools. What are the most common causes and how do you fix each?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>26. A pod has been Pending for 10 minutes and won't schedule — walk through the exact steps to diagnose why: checking scheduler events, identifying resource constraints vs node selector mismatches vs taint issues vs PVC binding failures. What are the common fixes for each cause?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>27. A container keeps getting OOMKilled — walk through how you detect this (pod describe, events, exit code 137), how you determine whether the memory limit is too low or the application has a genuine memory leak, and what the fix looks like for each case</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>28. Service A cannot reach Service B even though both pods are running — walk through the systematic debugging process: checking DNS resolution from within a pod, verifying service selectors match pod labels, inspecting endpoints, testing connectivity with curl/wget, and checking whether Network Policies are blocking traffic. Show the exact commands at each step</summary>
+<summary>22. Service A cannot reach Service B even though both pods are running — walk through the systematic debugging process: checking DNS resolution from within a pod, verifying service selectors match pod labels, inspecting endpoints, testing connectivity with curl/wget, and checking whether Network Policies are blocking traffic. Show the exact commands at each step</summary>
 
 <!-- Answer will be added later -->
 
@@ -240,28 +189,28 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>29. Tell me about a time you migrated a workload to Kubernetes or set up Kubernetes infrastructure from scratch — what drove the decision, what challenges did you face during the migration, and what would you do differently?</summary>
+<summary>23. Tell me about a time you migrated a workload to Kubernetes or set up Kubernetes infrastructure from scratch — what drove the decision, what challenges did you face during the migration, and what would you do differently?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>30. Describe a time you debugged a critical Kubernetes issue in production — what were the symptoms, how did you diagnose it, and what was the root cause?</summary>
+<summary>24. Describe a time you debugged a critical Kubernetes issue in production — what were the symptoms, how did you diagnose it, and what was the root cause?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>31. Tell me about a time you had to optimize Kubernetes resource usage or cost — what was the situation, what changes did you make (right-sizing, autoscaling, spot instances), and what was the measurable impact?</summary>
+<summary>25. Tell me about a time you had to optimize Kubernetes resource usage or cost — what was the situation, what changes did you make (right-sizing, autoscaling, spot instances), and what was the measurable impact?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>32. Describe a time you designed the deployment strategy or CI/CD pipeline for a Kubernetes-based application — what decisions did you make about rollout strategy, environment promotion, and developer experience?</summary>
+<summary>26. Describe a time you designed the deployment strategy or CI/CD pipeline for a Kubernetes-based application — what decisions did you make about rollout strategy, environment promotion, and developer experience?</summary>
 
 <!-- Answer framework will be added later -->
 

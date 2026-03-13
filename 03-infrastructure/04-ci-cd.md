@@ -1,6 +1,6 @@
 # CI/CD
 
-> **26 questions** — 10 theory, 16 practical
+> **21 questions** — 10 theory, 7 practical, 4 experience
 
 - CI vs CD (delivery vs deployment): why they're separate concerns
 - Pipeline design end to end: git push to production traffic — stage ordering and rationale
@@ -104,56 +104,28 @@
 </details>
 
 <details>
-<summary>12. Configure OIDC-based authentication from a CI pipeline to a cloud provider (GCP or AWS) so your pipeline never stores long-lived credentials -- show the workflow YAML for either CircleCI or GitHub Actions, explain how the OIDC token exchange works, and why is this approach better than static service account keys for security and credential rotation?</summary>
+<summary>12. Configure a CircleCI pipeline for a Node.js monorepo — show how orbs simplify reusable config, how to structure workflows with parallel jobs, implement test splitting across multiple executors to reduce wall-clock time, configure dependency caching (save_cache/restore_cache vs Docker Layer Caching), and add an approval job that gates production deployment behind a manual sign-off.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>13. Configure a CircleCI pipeline for a Node.js monorepo — show how orbs simplify reusable config, how to structure workflows with parallel jobs, implement test splitting across multiple executors to reduce wall-clock time, configure dependency caching (save_cache/restore_cache vs Docker Layer Caching), and add an approval job that gates production deployment behind a manual sign-off.</summary>
+<summary>13. Configure a GitHub Actions workflow for the same Node.js application — show a reusable workflow (workflow_call) that can be invoked from multiple repos, a matrix build that tests across Node versions, and how composite actions reduce duplication. Compare the GitHub Actions model (event-driven, marketplace actions) against CircleCI (orbs, resource classes, test splitting) — where does each platform have a genuine advantage?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>14. Configure a GitHub Actions workflow for the same Node.js application — show a reusable workflow (workflow_call) that can be invoked from multiple repos, a matrix build that tests across Node versions, and how composite actions reduce duplication. Compare the GitHub Actions model (event-driven, marketplace actions) against CircleCI (orbs, resource classes, test splitting) — where does each platform have a genuine advantage?</summary>
+<summary>14. Configure a CI pipeline quality gate that runs linting, type checking, SAST scanning, and dependency vulnerability checking (using tools like Snyk or Dependabot) -- show the pipeline YAML, explain why these steps should be ordered to fail fast (cheapest/fastest checks first), and what happens when teams skip SAST or dependency scanning and only discover vulnerabilities in production?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>15. Configure a CI pipeline quality gate that runs linting, type checking, SAST scanning, and dependency vulnerability checking (using tools like Snyk or Dependabot) -- show the pipeline YAML, explain why these steps should be ordered to fail fast (cheapest/fastest checks first), and what happens when teams skip SAST or dependency scanning and only discover vulnerabilities in production?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>16. Configure a CI pipeline that runs integration tests against real dependencies — show the config for spinning up service containers (PostgreSQL, Redis) alongside your test runner in both CircleCI and GitHub Actions, explain how testcontainers offers an alternative approach, and how do you handle test database state (migrations, seeding, cleanup between tests) so tests are reliable and isolated?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>17. Configure a canary deployment pipeline that deploys new code to a small percentage of traffic first, runs automated health checks (error rate, latency percentiles), and either promotes to full rollout or automatically rolls back — show the pipeline YAML and deployment configuration (using K8s native, Argo Rollouts, or Flagger), and explain what metrics you'd check and what thresholds trigger a rollback?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>18. Show how to integrate a database migration step into a deployment pipeline using the expand-and-contract pattern — write the pipeline stages that run the "expand" migration before deploying new code, verify both old and new code work with the expanded schema, then schedule the "contract" cleanup migration for a later pipeline. What safeguards prevent a failed migration from taking down the service?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>19. Configure a pipeline that promotes the exact same Docker image through dev → staging → production environments, changing only the configuration (environment variables, resource limits, replica counts) at each stage — show the pipeline YAML and explain how you ensure artifact identity across environments, how approval gates work between stages, and what verification steps run after each promotion?</summary>
+<summary>15. Configure a CI pipeline that runs integration tests against real dependencies — show the config for spinning up service containers (PostgreSQL, Redis) alongside your test runner in both CircleCI and GitHub Actions, explain how testcontainers offers an alternative approach, and how do you handle test database state (migrations, seeding, cleanup between tests) so tests are reliable and isolated?</summary>
 
 <!-- Answer will be added later -->
 
@@ -162,21 +134,14 @@
 ## Practical — Debugging & Troubleshooting
 
 <details>
-<summary>20. You discover that a third-party GitHub Action your pipeline depends on was compromised in a recent version update — walk through the immediate response (how you detect this, what you check for in your recent builds), the remediation steps (pinning to a known-good SHA, auditing your artifacts and deployed services), and the long-term prevention strategy (fork-and-mirror, action allowlists, Dependabot for action versions)?</summary>
+<summary>16. You discover that a third-party GitHub Action your pipeline depends on was compromised in a recent version update — walk through the immediate response (how you detect this, what you check for in your recent builds), the remediation steps (pinning to a known-good SHA, auditing your artifacts and deployed services), and the long-term prevention strategy (fork-and-mirror, action allowlists, Dependabot for action versions)?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>21. A production deploy goes out at 3pm, and by 3:15pm monitoring shows a spike in 500 errors — walk through the decision process: how do you confirm the deploy caused it vs a coincidental issue, what signals tell you to roll back immediately vs investigate first, show the exact commands to roll back (kubectl rollout undo, reverting the Git commit for GitOps, or re-deploying the previous image tag), and what health checks must pass before you declare the rollback successful?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>22. A deployment pipeline runs a database migration that adds a NOT NULL column without a default value, and the migration succeeds — but then the rolling deployment starts failing because old pods (still running) can't write to the table. Walk through why this happened, how to recover without data loss, and what pipeline safeguards would have caught this before it reached production?</summary>
+<summary>17. A production deploy goes out at 3pm, and by 3:15pm monitoring shows a spike in 500 errors — walk through the decision process: how do you confirm the deploy caused it vs a coincidental issue, what signals tell you to roll back immediately vs investigate first, show the exact commands to roll back (kubectl rollout undo, reverting the Git commit for GitOps, or re-deploying the previous image tag), and what health checks must pass before you declare the rollback successful?</summary>
 
 <!-- Answer will be added later -->
 
@@ -189,28 +154,28 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>23. Tell me about a time you designed or significantly improved a CI/CD pipeline — what was the pipeline's state before, what changes did you make, what tradeoffs did you navigate (speed vs safety, complexity vs maintainability), and what was the measurable impact on deployment frequency or developer experience?</summary>
+<summary>18. Tell me about a time you designed or significantly improved a CI/CD pipeline — what was the pipeline's state before, what changes did you make, what tradeoffs did you navigate (speed vs safety, complexity vs maintainability), and what was the measurable impact on deployment frequency or developer experience?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>24. Describe a time a deployment went wrong in production and you had to decide between rolling back and fixing forward — what were the symptoms, how did you diagnose the root cause, what decision did you make and why, and what process changes did you implement afterward to prevent a recurrence?</summary>
+<summary>19. Describe a time a deployment went wrong in production and you had to decide between rolling back and fixing forward — what were the symptoms, how did you diagnose the root cause, what decision did you make and why, and what process changes did you implement afterward to prevent a recurrence?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>25. Tell me about a time you dealt with flaky tests or unreliable pipelines that were slowing down the team — how did you identify the root causes, what was your strategy for fixing them (quarantine, rewrite, infrastructure changes), and how did you balance fixing flakiness against shipping features?</summary>
+<summary>20. Tell me about a time you dealt with flaky tests or unreliable pipelines that were slowing down the team — how did you identify the root causes, what was your strategy for fixing them (quarantine, rewrite, infrastructure changes), and how did you balance fixing flakiness against shipping features?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>26. Describe a time you had to coordinate a risky database migration alongside a code deployment — what made the migration risky, how did you plan the rollout (backward compatibility, rollback plan, testing strategy), and what would you do differently if you had to do it again?</summary>
+<summary>21. Describe a time you had to coordinate a risky database migration alongside a code deployment — what made the migration risky, how did you plan the rollout (backward compatibility, rollback plan, testing strategy), and what would you do differently if you had to do it again?</summary>
 
 <!-- Answer framework will be added later -->
 

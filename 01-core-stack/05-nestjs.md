@@ -1,6 +1,6 @@
 # NestJS
 
-> **26 questions** — 8 theory, 14 practical, 4 experience
+> **25 questions** — 8 theory, 13 practical, 4 experience
 
 - Core building blocks: modules, controllers, providers, and enforced structure
 - Dependency injection: DI containers, provider scopes (DEFAULT, REQUEST, TRANSIENT), custom providers (useClass, useFactory, useValue, useExisting)
@@ -161,24 +161,15 @@
 
 <!-- Answer will be added later -->
 
-</details>
-
-<details>
-<summary>20. Test a guard and a pipe in isolation — show unit tests for a custom AuthGuard (testing both allowed and denied cases) and a ValidationPipe with a DTO (testing valid and invalid input), and explain why testing these in isolation catches issues faster than only testing through integration tests</summary>
+</details><details>
+<summary>20. Build a custom exception filter that handles domain-specific errors — show an exception filter that catches custom application errors (NotFoundError, ValidationError, AuthorizationError), maps them to appropriate HTTP responses with consistent error format, and explain how exception filters differ from try/catch in controllers</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>21. Build a custom exception filter that handles domain-specific errors — show an exception filter that catches custom application errors (NotFoundError, ValidationError, AuthorizationError), maps them to appropriate HTTP responses with consistent error format, and explain how exception filters differ from try/catch in controllers</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>22. Set up a NestJS application with proper module boundaries for a domain-driven structure — show how to organize modules around business domains (users, orders, payments) rather than technical layers, demonstrate how modules communicate through well-defined exports, and what the module dependency graph should look like</summary>
+<summary>21. Set up a NestJS application with proper module boundaries for a domain-driven structure — show how to organize modules around business domains (users, orders, payments) rather than technical layers, demonstrate how modules communicate through well-defined exports, and what the module dependency graph should look like</summary>
 
 <!-- Answer will be added later -->
 
@@ -191,28 +182,28 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>23. Tell me about a time you chose NestJS for a project (or inherited a NestJS codebase) — what were the benefits and drawbacks compared to plain Express, and how did the framework's opinions help or hinder the team?</summary>
+<summary>22. Tell me about a time you chose NestJS for a project (or inherited a NestJS codebase) — what were the benefits and drawbacks compared to plain Express, and how did the framework's opinions help or hinder the team?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>24. Describe a time you structured a NestJS application to scale across a team — how did you organize modules, what conventions did you establish, and what architectural decisions did you make about domain boundaries?</summary>
+<summary>23. Describe a time you structured a NestJS application to scale across a team — how did you organize modules, what conventions did you establish, and what architectural decisions did you make about domain boundaries?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>25. Tell me about a time you debugged a complex NestJS issue (DI problems, lifecycle issues, middleware ordering) — what was the symptom, how did you diagnose it, and what did you learn about NestJS internals?</summary>
+<summary>24. Tell me about a time you debugged a complex NestJS issue (DI problems, lifecycle issues, middleware ordering) — what was the symptom, how did you diagnose it, and what did you learn about NestJS internals?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>26. Describe a time you set up testing for a NestJS application — what testing strategy did you choose, how did you handle mocking vs real dependencies, and what was the most challenging aspect?</summary>
+<summary>25. Describe a time you set up testing for a NestJS application — what testing strategy did you choose, how did you handle mocking vs real dependencies, and what was the most challenging aspect?</summary>
 
 <!-- Answer framework will be added later -->
 

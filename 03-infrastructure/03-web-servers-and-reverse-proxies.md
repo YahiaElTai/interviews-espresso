@@ -1,6 +1,6 @@
 # Web Servers & Reverse Proxies
 
-> **23 questions** — 10 theory, 11 practical, 2 experience
+> **20 questions** — 9 theory, 9 practical, 2 experience
 
 - Forward proxy vs reverse proxy: purpose, architecture, and use cases
 - Request lifecycle through Nginx to a Node.js backend (TLS, headers, buffering, upstream selection)
@@ -11,7 +11,6 @@
 - Rate limiting: leaky bucket, token bucket, sliding window — proxy-layer vs application-layer
 - WebSocket and SSE proxying: connection upgrade handling, proxy timeouts for long-lived connections, buffering behavior
 - Proxy headers: X-Forwarded-For, X-Real-IP, Host — and trust-proxy security risks
-- Security headers: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, server version hiding
 - Debugging: 502 Bad Gateway, 504 Gateway Timeout, DNS caching, stale upstream IPs
 - Path-based routing: serving multiple services from one domain, location block priority and matching rules
 
@@ -75,17 +74,8 @@
 
 <!-- Answer will be added later -->
 
-</details>
-
-<details>
-<summary>9. What are the key security response headers (Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security) and why should they be set at the proxy layer — what attacks does each header prevent, and why is hiding the server version (Server header) a worthwhile security measure?</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>10. Why would you serve multiple backend services from a single domain using path-based routing at the proxy layer — what are the alternatives (subdomains, separate domains), what are the tradeoffs, and how does Nginx's location block matching and priority system (exact, prefix, regex) determine which block handles a given request?</summary>
+</details><details>
+<summary>9. Why would you serve multiple backend services from a single domain using path-based routing at the proxy layer — what are the alternatives (subdomains, separate domains), what are the tradeoffs, and how does Nginx's location block matching and priority system (exact, prefix, regex) determine which block handles a given request?</summary>
 
 <!-- Answer will be added later -->
 
@@ -94,99 +84,81 @@
 ## Practical — Configuration & Routing
 
 <details>
-<summary>11. Configure Nginx as a reverse proxy for two Node.js services running on different ports, routing requests based on URL path (/api/* to one service, /admin/* to another, and everything else to a static frontend) — show the full nginx.conf with upstream blocks, location blocks, and proxy_pass directives, and explain what happens when the location block matching order is wrong.</summary>
+<summary>10. Configure Nginx as a reverse proxy for two Node.js services running on different ports, routing requests based on URL path (/api/* to one service, /admin/* to another, and everything else to a static frontend) — show the full nginx.conf with upstream blocks, location blocks, and proxy_pass directives, and explain what happens when the location block matching order is wrong.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>12. Configure Nginx to load balance across three backend instances using least-connections with health checks — show the upstream block configuration, explain how max_fails and fail_timeout work, what happens when all upstreams are marked unhealthy, and how you'd add a new backend instance without restarting Nginx.</summary>
+<summary>11. Configure Nginx to load balance across three backend instances using least-connections with health checks — show the upstream block configuration, explain how max_fails and fail_timeout work, what happens when all upstreams are marked unhealthy, and how you'd add a new backend instance without restarting Nginx.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>13. Configure TLS termination in Nginx with certificate and key files, redirect all HTTP traffic to HTTPS, set up HSTS headers, and configure OCSP stapling — show the server blocks for both port 80 and 443, explain the ssl_protocols and ssl_ciphers choices, and what breaks if the certificate chain is incomplete.</summary>
+<summary>12. Configure TLS termination in Nginx with certificate and key files, redirect all HTTP traffic to HTTPS, set up HSTS headers, and configure OCSP stapling — show the server blocks for both port 80 and 443, explain the ssl_protocols and ssl_ciphers choices, and what breaks if the certificate chain is incomplete.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>14. Configure rate limiting in Nginx using the limit_req module — show how to set up a shared memory zone, define the rate, configure burst and nodelay, apply different rate limits to different location blocks (e.g., stricter limits on /api/login), and explain what the client experiences when they hit the limit vs when they exceed the burst.</summary>
+<summary>13. Configure rate limiting in Nginx using the limit_req module — show how to set up a shared memory zone, define the rate, configure burst and nodelay, apply different rate limits to different location blocks (e.g., stricter limits on /api/login), and explain what the client experiences when they hit the limit vs when they exceed the burst.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>15. Configure Nginx to proxy WebSocket connections and SSE streams to a Node.js backend — show the configuration for the connection upgrade mechanism (Upgrade and Connection headers), explain what proxy_read_timeout and proxy_send_timeout values you'd set for long-lived connections, why proxy_buffering must be off for SSE, and what symptoms appear when these settings are wrong.</summary>
+<summary>14. Configure Nginx to proxy WebSocket connections and SSE streams to a Node.js backend — show the configuration for the connection upgrade mechanism (Upgrade and Connection headers), explain what proxy_read_timeout and proxy_send_timeout values you'd set for long-lived connections, why proxy_buffering must be off for SSE, and what symptoms appear when these settings are wrong.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>16. Configure the proxy headers (X-Forwarded-For, X-Real-IP, X-Forwarded-Proto, Host) in Nginx for a setup where Nginx sits behind a cloud load balancer — show the proxy_set_header directives, explain how set_header vs add_header behaves differently in nested location blocks, and demonstrate the configuration that prevents IP spoofing through X-Forwarded-For header injection.</summary>
+<summary>15. Configure the proxy headers (X-Forwarded-For, X-Real-IP, X-Forwarded-Proto, Host) in Nginx for a setup where Nginx sits behind a cloud load balancer — show the proxy_set_header directives, explain how set_header vs add_header behaves differently in nested location blocks, and demonstrate the configuration that prevents IP spoofing through X-Forwarded-For header injection.</summary>
+
+<!-- Answer will be added later -->
+
+</details>## Practical — Observability & Debugging
+
+<details>
+<summary>16. Your application is intermittently returning 502 Bad Gateway through Nginx — walk through the exact steps to diagnose the root cause: what to check in Nginx error logs, how to determine whether the upstream is crashing vs refusing connections vs timing out during response, what the difference between "connection refused" and "no live upstreams" means, and how to fix each case.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>17. Configure security response headers in Nginx (Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security) and hide the server version — show the add_header directives, explain why these are typically set at the proxy layer rather than in application code, and what happens when add_header in a nested location block silently drops headers set in a parent block.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-## Practical — Observability & Debugging
-
-<details>
-<summary>18. Your application is intermittently returning 502 Bad Gateway through Nginx — walk through the exact steps to diagnose the root cause: what to check in Nginx error logs, how to determine whether the upstream is crashing vs refusing connections vs timing out during response, what the difference between "connection refused" and "no live upstreams" means, and how to fix each case.</summary>
+<summary>17. Users report that certain API requests hang for exactly 60 seconds and then return 504 Gateway Timeout — walk through the debugging process: how to identify which timeout is being hit (proxy_read_timeout, proxy_connect_timeout, or upstream application timeout), how to check whether the backend is actually slow vs Nginx is misconfigured, and what the correct timeout tuning strategy looks like for different types of endpoints.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>19. Users report that certain API requests hang for exactly 60 seconds and then return 504 Gateway Timeout — walk through the debugging process: how to identify which timeout is being hit (proxy_read_timeout, proxy_connect_timeout, or upstream application timeout), how to check whether the backend is actually slow vs Nginx is misconfigured, and what the correct timeout tuning strategy looks like for different types of endpoints.</summary>
+<summary>18. After a deployment, some requests are failing because Nginx is still sending traffic to old backend IPs — explain why this happens (DNS caching in Nginx with upstream blocks), how Nginx resolves DNS for upstream servers at startup vs at runtime, and show the configuration changes (resolver directive, variables in proxy_pass) that fix stale upstream IP issues in dynamic environments like Kubernetes or auto-scaling groups.</summary>
 
 <!-- Answer will be added later -->
 
-</details>
-
-<details>
-<summary>20. After a deployment, some requests are failing because Nginx is still sending traffic to old backend IPs — explain why this happens (DNS caching in Nginx with upstream blocks), how Nginx resolves DNS for upstream servers at startup vs at runtime, and show the configuration changes (resolver directive, variables in proxy_pass) that fix stale upstream IP issues in dynamic environments like Kubernetes or auto-scaling groups.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>21. You're adding a new /api/v2 path to your Nginx config but requests are unexpectedly hitting a different location block — walk through how Nginx evaluates location blocks (exact match with =, preferential prefix with ^~, regex with ~, and plain prefix), show examples of conflicting location blocks that produce surprising results, and explain the systematic approach to debugging which location block is being selected for a given request.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
----
+</details>---
 
 ## Experience-Based Questions
 
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>22. Tell me about a time you configured or optimized an Nginx reverse proxy setup in production — what was the architecture, what problems were you solving, and what configuration decisions had the biggest impact on performance or reliability?</summary>
+<summary>19. Tell me about a time you configured or optimized an Nginx reverse proxy setup in production — what was the architecture, what problems were you solving, and what configuration decisions had the biggest impact on performance or reliability?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>23. Describe a time you debugged a proxy-related issue in production (502s, 504s, TLS errors, routing problems) — what were the symptoms, how did you narrow down whether the issue was in the proxy layer vs the backend, and what was the root cause?</summary>
+<summary>20. Describe a time you debugged a proxy-related issue in production (502s, 504s, TLS errors, routing problems) — what were the symptoms, how did you narrow down whether the issue was in the proxy layer vs the backend, and what was the root cause?</summary>
 
 <!-- Answer framework will be added later -->
 

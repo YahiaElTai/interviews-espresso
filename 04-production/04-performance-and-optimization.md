@@ -1,6 +1,6 @@
 # Performance & Optimization
 
-> **27 questions** — 12 theory, 12 practical, 3 experience
+> **25 questions** — 12 theory, 10 practical, 3 experience
 
 - Measure first, optimize second — establishing baselines, profiling before changing code, validating fixes with before/after data
 - Request lifecycle bottlenecks — where latency hides across DNS, TLS, load balancer, app server, database, and external APIs
@@ -158,38 +158,22 @@
 
 </details>
 
-## Practical — Profiling & Debugging
-
-<details>
-<summary>20. Walk through using clinic.js (or Node.js --prof) to generate and interpret a flame graph for a slow Node.js API — show the exact commands to capture the profile, explain how to read the flame graph to identify the hot path (CPU-bound function, JSON.stringify on large objects, or regex backtracking), and demonstrate the fix</summary>
+## Practical — Profiling & Debugging<details>
+<summary>20. An API endpoint that was fast last month is now consistently slow (p99 went from 200ms to 2s) — walk through the systematic diagnosis process across every layer of the request lifecycle: how you'd isolate whether the problem is in DNS/TLS, the load balancer, application code, database queries, or an external dependency, showing the exact tools and commands at each step</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>21. Show how to detect event loop lag in a running Node.js application using perf_hooks (monitorEventLoopDelay) — explain what constitutes dangerous lag, what the common causes are (CPU-intensive computation, large synchronous operations, blocked I/O), and how you'd set up an alert that triggers before users notice degradation</summary>
+<summary>21. After a deployment, your service starts showing exponentially increasing latency and eventually cascading failures across dependent services — diagnose whether this is a retry storm or thundering herd, show how each pattern manifests differently in metrics and logs, and demonstrate the specific fixes (exponential backoff with jitter, circuit breaking, request coalescing) with code examples</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>22. An API endpoint that was fast last month is now consistently slow (p99 went from 200ms to 2s) — walk through the systematic diagnosis process across every layer of the request lifecycle: how you'd isolate whether the problem is in DNS/TLS, the load balancer, application code, database queries, or an external dependency, showing the exact tools and commands at each step</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>23. After a deployment, your service starts showing exponentially increasing latency and eventually cascading failures across dependent services — diagnose whether this is a retry storm or thundering herd, show how each pattern manifests differently in metrics and logs, and demonstrate the specific fixes (exponential backoff with jitter, circuit breaking, request coalescing) with code examples</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>24. Your Node.js service is intermittently timing out on database calls even though the database server shows low CPU and memory — walk through diagnosing connection pool exhaustion: what symptoms to look for in application metrics, how to confirm the pool is the bottleneck (vs slow queries or network issues), the exact PgBouncer and ORM pool settings to inspect, and how to fix it without just blindly increasing the pool size</summary>
+<summary>22. Your Node.js service is intermittently timing out on database calls even though the database server shows low CPU and memory — walk through diagnosing connection pool exhaustion: what symptoms to look for in application metrics, how to confirm the pool is the bottleneck (vs slow queries or network issues), the exact PgBouncer and ORM pool settings to inspect, and how to fix it without just blindly increasing the pool size</summary>
 
 <!-- Answer will be added later -->
 
@@ -202,21 +186,21 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>25. Tell me about a time you diagnosed and fixed a significant production performance issue — what were the symptoms, how did you identify the root cause (not just the surface-level fix), and how did you validate that your fix actually worked under real traffic?</summary>
+<summary>23. Tell me about a time you diagnosed and fixed a significant production performance issue — what were the symptoms, how did you identify the root cause (not just the surface-level fix), and how did you validate that your fix actually worked under real traffic?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>26. Describe a time you designed and implemented a caching strategy for a system — what drove the decision, what layer(s) did you cache at, how did you handle invalidation, and what unexpected problems did caching introduce?</summary>
+<summary>24. Describe a time you designed and implemented a caching strategy for a system — what drove the decision, what layer(s) did you cache at, how did you handle invalidation, and what unexpected problems did caching introduce?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>27. Describe a time you had to make a deliberate decision NOT to optimize something — what was the performance problem, why did you decide the optimization wasn't worth it, and how did you communicate that tradeoff to stakeholders?</summary>
+<summary>25. Describe a time you had to make a deliberate decision NOT to optimize something — what was the performance problem, why did you decide the optimization wasn't worth it, and how did you communicate that tradeoff to stakeholders?</summary>
 
 <!-- Answer framework will be added later -->
 

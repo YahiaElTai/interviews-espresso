@@ -1,6 +1,6 @@
 # Authentication & Security
 
-> **27 questions** — 13 theory, 11 practical, 3 experience
+> **25 questions** — 13 theory, 9 practical, 3 experience
 
 - Authentication vs authorization and why they must be separate concerns
 - Hashing vs encryption, symmetric vs asymmetric cryptography, digital signatures
@@ -158,24 +158,8 @@
 
 <!-- Answer will be added later -->
 
-</details>
-
-<details>
-<summary>20. Implement CSRF protection for a server-rendered application — show how CSRF tokens work (generation, embedding in forms, validation on submit), explain the double-submit cookie pattern as an alternative, and why SameSite=Strict cookies reduce but don't eliminate the need for CSRF tokens</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>21. Demonstrate an SSRF vulnerability and implement the fix — show a vulnerable endpoint that fetches a user-provided URL, demonstrate how an attacker uses it to reach internal services (169.254.169.254 metadata endpoint, internal APIs), and implement the defenses (URL allowlisting, DNS resolution validation, blocking private IP ranges)</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>22. Implement input validation at an API boundary using Zod or Joi in a Node.js API — show how schema validation prevents mass assignment and injection attacks, demonstrate output encoding that prevents stored XSS when user input is rendered, explain the defense-in-depth principle (why you need both input validation AND output encoding), and show how a poorly written validation regex can create a ReDoS vulnerability</summary>
+</details><details>
+<summary>20. Implement input validation at an API boundary using Zod or Joi in a Node.js API — show how schema validation prevents mass assignment and injection attacks, demonstrate output encoding that prevents stored XSS when user input is rendered, explain the defense-in-depth principle (why you need both input validation AND output encoding), and show how a poorly written validation regex can create a ReDoS vulnerability</summary>
 
 <!-- Answer will be added later -->
 
@@ -184,14 +168,14 @@
 ## Practical — Access Control & Production
 
 <details>
-<summary>23. Implement RBAC middleware for a Node.js API — show the role and permission model (user → roles → permissions), the middleware that checks permissions on each route, how to handle hierarchical roles (admin inherits editor permissions), and what the common mistakes are (checking roles instead of permissions, hardcoding role names)</summary>
+<summary>21. Implement RBAC middleware for a Node.js API — show the role and permission model (user → roles → permissions), the middleware that checks permissions on each route, how to handle hierarchical roles (admin inherits editor permissions), and what the common mistakes are (checking roles instead of permissions, hardcoding role names)</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>24. Implement rate limiting and brute-force protection for a login endpoint — show the middleware that limits login attempts per IP and per account (using Redis for distributed state), implement progressive delays or temporary lockouts after repeated failures, configure request payload size limits to prevent oversized-body DoS attacks, and explain how attackers bypass naive rate limiting (distributed attacks, credential stuffing)</summary>
+<summary>22. Implement rate limiting and brute-force protection for a login endpoint — show the middleware that limits login attempts per IP and per account (using Redis for distributed state), implement progressive delays or temporary lockouts after repeated failures, configure request payload size limits to prevent oversized-body DoS attacks, and explain how attackers bypass naive rate limiting (distributed attacks, credential stuffing)</summary>
 
 <!-- Answer will be added later -->
 
@@ -204,21 +188,21 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>25. Tell me about a time you designed or significantly improved an authentication system — what approach did you choose (JWT, sessions, OAuth), what tradeoffs did you face, and what would you do differently?</summary>
+<summary>23. Tell me about a time you designed or significantly improved an authentication system — what approach did you choose (JWT, sessions, OAuth), what tradeoffs did you face, and what would you do differently?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>26. Describe a security vulnerability you discovered or fixed in a production application — how did you find it, what was the impact, and what changes did you make to prevent similar issues?</summary>
+<summary>24. Describe a security vulnerability you discovered or fixed in a production application — how did you find it, what was the impact, and what changes did you make to prevent similar issues?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>27. Describe a time you had to balance security requirements with developer experience or business needs — what was the tradeoff, how did you make the decision, and what was the outcome?</summary>
+<summary>25. Describe a time you had to balance security requirements with developer experience or business needs — what was the tradeoff, how did you make the decision, and what was the outcome?</summary>
 
 <!-- Answer framework will be added later -->
 

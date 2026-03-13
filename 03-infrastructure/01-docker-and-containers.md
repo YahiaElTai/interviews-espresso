@@ -1,6 +1,6 @@
 # Docker & Containers
 
-> **28 questions** — 9 theory, 15 practical, 4 experience
+> **25 questions** — 9 theory, 12 practical, 4 experience
 
 - Linux primitives: cgroups (resource limits), namespaces (process/network/mount isolation), and how they combine to create containers
 - Docker images, layers, union filesystem, and copy-on-write
@@ -106,54 +106,36 @@
 
 <!-- Answer will be added later -->
 
-</details>
-
-<details>
-<summary>13. Configure a .dockerignore file for a Node.js project — show the file contents, explain what happens to build context size and build cache without it, and identify the files that commonly leak into images causing bloat or security issues (node_modules, .git, .env, test files).</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-## Practical — Runtime & Compose
-
-<details>
-<summary>14. Configure volumes and bind mounts for a PostgreSQL container that persists data across container restarts and removals — show both the docker run commands and Docker Compose equivalents, explain what happens to the data when you docker rm the container vs docker volume rm, and demonstrate named volumes vs anonymous volumes.</summary>
+</details>## Practical — Runtime & Compose<details>
+<summary>13. Configure proper PID 1 signal handling in a Dockerfile using tini or dumb-init — show the Dockerfile changes, demonstrate the difference in graceful shutdown behavior with and without an init process, and show how to verify that SIGTERM is being properly forwarded to your Node.js application.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>15. Configure proper PID 1 signal handling in a Dockerfile using tini or dumb-init — show the Dockerfile changes, demonstrate the difference in graceful shutdown behavior with and without an init process, and show how to verify that SIGTERM is being properly forwarded to your Node.js application.</summary>
+<summary>14. Set CPU and memory resource limits on a container — show the docker run flags and Docker Compose equivalents, demonstrate how to monitor actual resource usage with docker stats, explain what happens when a container hits its memory limit (OOM kill) vs its CPU limit (throttling), and show how to detect OOM kills from container inspect output.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>16. Set CPU and memory resource limits on a container — show the docker run flags and Docker Compose equivalents, demonstrate how to monitor actual resource usage with docker stats, explain what happens when a container hits its memory limit (OOM kill) vs its CPU limit (throttling), and show how to detect OOM kills from container inspect output.</summary>
+<summary>15. Write a Docker Compose file for local development of a Node.js application with a PostgreSQL database and Redis — configure bind mounts for hot-reload (so code changes reflect without rebuilding), show how to handle the node_modules conflict between host and container, and set up environment variables for connecting services together.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>17. Write a Docker Compose file for local development of a Node.js application with a PostgreSQL database and Redis — configure bind mounts for hot-reload (so code changes reflect without rebuilding), show how to handle the node_modules conflict between host and container, and set up environment variables for connecting services together.</summary>
+<summary>16. Add health checks to a Docker Compose setup — show the health check configuration for both an application container (HTTP endpoint) and a database container (pg_isready), configure service dependencies using depends_on with condition: service_healthy, and explain what Docker does when a health check fails vs what it doesn't do.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>18. Add health checks to a Docker Compose setup — show the health check configuration for both an application container (HTTP endpoint) and a database container (pg_isready), configure service dependencies using depends_on with condition: service_healthy, and explain what Docker does when a health check fails vs what it doesn't do.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>19. Set up a Docker Compose configuration for running integration tests in CI — show how to start the application with its database and run tests against it, handle waiting for services to be ready, ensure clean state between test runs, and demonstrate the CI pipeline commands to bring up, test, and tear down the stack.</summary>
+<summary>17. Set up a Docker Compose configuration for running integration tests in CI — show how to start the application with its database and run tests against it, handle waiting for services to be ready, ensure clean state between test runs, and demonstrate the CI pipeline commands to bring up, test, and tear down the stack.</summary>
 
 <!-- Answer will be added later -->
 
@@ -162,7 +144,7 @@
 ## Practical — Security
 
 <details>
-<summary>20. Harden a container's runtime security posture — show how to run as a non-root user (USER, file ownership, directory permissions), enable a read-only filesystem with tmpfs for directories that need writes, and drop all Linux capabilities then add back only what's needed. Explain what commonly breaks with each hardening step (port binding below 1024, file permissions, read-only conflicts with logging/temp files, missing capabilities for network binding) and how to fix each issue.</summary>
+<summary>18. Harden a container's runtime security posture — show how to run as a non-root user (USER, file ownership, directory permissions), enable a read-only filesystem with tmpfs for directories that need writes, and drop all Linux capabilities then add back only what's needed. Explain what commonly breaks with each hardening step (port binding below 1024, file permissions, read-only conflicts with logging/temp files, missing capabilities for network binding) and how to fix each issue.</summary>
 
 <!-- Answer will be added later -->
 
@@ -171,28 +153,19 @@
 ## Practical — Debugging & Troubleshooting
 
 <details>
-<summary>21. A container exits immediately after starting — walk through the exact debugging steps using docker logs, docker inspect (check exit code and state), and docker run with an interactive shell to reproduce the issue. What are the most common causes of immediate exit (missing entrypoint, failed health check, missing env vars, permission errors) and how do you fix each?</summary>
+<summary>19. A container exits immediately after starting — walk through the exact debugging steps using docker logs, docker inspect (check exit code and state), and docker run with an interactive shell to reproduce the issue. What are the most common causes of immediate exit (missing entrypoint, failed health check, missing env vars, permission errors) and how do you fix each?</summary>
+
+<!-- Answer will be added later -->
+
+</details><details>
+<summary>20. A container cannot reach another container or an external service — walk through the systematic debugging process: check which network the containers are on, verify DNS resolution, test connectivity with curl/wget from inside the container, inspect port mappings, and identify whether the issue is network mode, firewall rules, or application-level binding (0.0.0.0 vs 127.0.0.1). Show the exact commands at each step.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>22. Your Docker build is not using the cache and rebuilding layers that haven't changed — walk through how to diagnose which layer invalidated the cache and why, show the build output that indicates cache hits vs misses, and demonstrate the most common causes (COPY ordering, changing build args, context changes from missing .dockerignore) with fixes for each.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>23. A container cannot reach another container or an external service — walk through the systematic debugging process: check which network the containers are on, verify DNS resolution, test connectivity with curl/wget from inside the container, inspect port mappings, and identify whether the issue is network mode, firewall rules, or application-level binding (0.0.0.0 vs 127.0.0.1). Show the exact commands at each step.</summary>
-
-<!-- Answer will be added later -->
-
-</details>
-
-<details>
-<summary>24. You need to diagnose a running container that is behaving unexpectedly — show how to use docker exec to get a shell, inspect running processes, check file system state, view environment variables, test network connectivity, and read application logs. What do you do when the container image has no shell or debugging tools installed (distroless/scratch)?</summary>
+<summary>21. You need to diagnose a running container that is behaving unexpectedly — show how to use docker exec to get a shell, inspect running processes, check file system state, view environment variables, test network connectivity, and read application logs. What do you do when the container image has no shell or debugging tools installed (distroless/scratch)?</summary>
 
 <!-- Answer will be added later -->
 
@@ -205,28 +178,28 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>25. Tell me about a time you significantly reduced Docker image size or build time — what was the starting point, what specific changes did you make (multi-stage builds, base image switch, layer reordering, .dockerignore), and what was the measurable impact on CI pipeline speed or deployment?</summary>
+<summary>22. Tell me about a time you significantly reduced Docker image size or build time — what was the starting point, what specific changes did you make (multi-stage builds, base image switch, layer reordering, .dockerignore), and what was the measurable impact on CI pipeline speed or deployment?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>26. Describe a time you debugged a container issue in production or staging — what were the symptoms, how did you diagnose the root cause (logs, exec, inspect, resource limits), and what did you change to prevent it from recurring?</summary>
+<summary>23. Describe a time you debugged a container issue in production or staging — what were the symptoms, how did you diagnose the root cause (logs, exec, inspect, resource limits), and what did you change to prevent it from recurring?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>27. Tell me about a time you set up or improved a containerized local development environment for your team — what problems existed before (slow rebuilds, environment drift, flaky service dependencies), what did you implement, and how did it affect developer productivity?</summary>
+<summary>24. Tell me about a time you set up or improved a containerized local development environment for your team — what problems existed before (slow rebuilds, environment drift, flaky service dependencies), what did you implement, and how did it affect developer productivity?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>28. Describe a time you dealt with a container security concern — what was the vulnerability or misconfiguration (running as root, exposed secrets, unscanned images, excessive capabilities), how did you discover it, and what remediation steps did you take?</summary>
+<summary>25. Describe a time you dealt with a container security concern — what was the vulnerability or misconfiguration (running as root, exposed secrets, unscanned images, excessive capabilities), how did you discover it, and what remediation steps did you take?</summary>
 
 <!-- Answer framework will be added later -->
 

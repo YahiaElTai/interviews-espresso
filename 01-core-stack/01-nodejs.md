@@ -1,13 +1,12 @@
 # Node.js
 
-> **35 questions** — 16 theory, 19 practical
+> **30 questions** — 15 theory, 15 practical
 
 - Single-threaded event loop architecture and why Node.js chose non-blocking I/O
 - EventEmitter → Stream → HTTP/FS/Net inheritance chain
 - Event loop phases, microtasks, process.nextTick(), and setImmediate; blocking patterns (sync APIs, JSON.stringify DoS, O(n^2) callbacks) and mitigation (setImmediate partitioning, worker offloading)
 - libuv, the thread pool, and UV_THREADPOOL_SIZE tuning
 - Streams: readable, writable, transform, backpressure, pipe() vs pipeline()
-- Core APIs: Buffer for binary data, fs/promises for file I/O, crypto for hashing and randomness, path for cross-platform paths, util.promisify
 - Worker threads vs child processes vs cluster module
 - V8 garbage collection, memory management, heap snapshots, and leak detection
 - CommonJS vs ES Modules tradeoffs and dual-package publishing
@@ -735,79 +734,8 @@ Healthy: p99 < 10ms. Degraded: p99 > 50ms. Blocked: p99 > 100ms.
 - **Response time percentiles** — p50, p95, p99 at the application level
 - **Error rate** — sudden increase signals something broke
 
-</details>
-
-<details>
-<summary>14. How can process.nextTick() and recursive microtasks starve the event loop — why do microtasks and nextTick callbacks run to completion before the event loop advances to the next phase, what real-world scenarios cause this (recursive nextTick, unbounded Promise chains), and how do you detect and prevent it?</summary>
-
-**Why starvation happens:**
-
-As covered in the event loop question (Q3), between every phase transition the event loop drains two queues completely: the nextTick queue first, then the microtask queue. "Drain completely" is the key — if draining one queue adds more items to the same queue, the loop keeps draining. It never moves to the next phase until both queues are empty.
-
-This means I/O callbacks, timers, and setImmediate are all stuck waiting. The event loop is alive (not crashed), but it's trapped in an infinite microtask/nextTick loop.
-
-**Starvation example with recursive nextTick:**
-
-```typescript
-// This starves the event loop — setTimeout never fires
-function recursiveNextTick() {
-  process.nextTick(recursiveNextTick);
-}
-recursiveNextTick();
-
-setTimeout(() => {
-  console.log('This never runs');
-}, 100);
-```
-
-**Starvation with recursive Promise resolution:**
-
-```typescript
-// Same problem with Promises
-function recursiveMicrotask() {
-  Promise.resolve().then(recursiveMicrotask);
-}
-recursiveMicrotask();
-
-// I/O, timers, and setImmediate are all blocked
-```
-
-**Real-world scenarios:**
-
-1. **Unbounded recursive data processing with Promises.** Processing a large list by recursively calling `Promise.resolve().then(() => processNext())` instead of using a loop or `setImmediate()` for batching.
-
-2. **Event handlers that trigger themselves.** An EventEmitter listener that, in its handler, emits the same event synchronously or via `process.nextTick()`.
-
-3. **Library code with recursive nextTick.** Some older stream implementations used recursive `nextTick` for scheduling, which could stall under high throughput.
-
-**How to detect it:**
-
-- **Event loop lag spikes to infinity.** `monitorEventLoopDelay()` shows the event loop isn't advancing — the delay grows unbounded.
-- **All I/O stops.** HTTP requests hang, timers don't fire, but the process is using CPU (it's running microtasks, not idle).
-- **`--prof` or CPU profile** shows all time spent in microtask/nextTick callbacks.
-
-**How to prevent it:**
-
-Use `setImmediate()` instead of `process.nextTick()` for recursive scheduling. `setImmediate` runs in the check phase, which means the event loop completes a full cycle (including I/O) before executing the callback:
-
-```typescript
-// SAFE: yields to the event loop between iterations
-function processItems(items: string[], index = 0) {
-  if (index >= items.length) return;
-
-  doWork(items[index]);
-
-  // setImmediate lets I/O and timers run between iterations
-  setImmediate(() => processItems(items, index + 1));
-}
-```
-
-**Rule of thumb:** Use `process.nextTick()` only for one-shot scheduling (like emitting an event after construction). For anything recursive or unbounded, use `setImmediate()`.
-
-</details>
-
-<details>
-<summary>15. What are the most common ways developers accidentally block the Node.js event loop — how do synchronous API calls (crypto.pbkdf2Sync, fs.readFileSync, zlib.inflateSync), large JSON.stringify/parse operations, and O(n^2) algorithms in request handlers cause latency spikes under load, and how does partitioning work with setImmediate() compare to offloading to worker threads as a mitigation strategy?</summary>
+</details><details>
+<summary>14. What are the most common ways developers accidentally block the Node.js event loop — how do synchronous API calls (crypto.pbkdf2Sync, fs.readFileSync, zlib.inflateSync), large JSON.stringify/parse operations, and O(n^2) algorithms in request handlers cause latency spikes under load, and how does partitioning work with setImmediate() compare to offloading to worker threads as a mitigation strategy?</summary>
 
 **The common blockers:**
 
@@ -869,7 +797,7 @@ async function processInBatches(items: string[], batchSize = 1000) {
 </details>
 
 <details>
-<summary>16. What are the most dangerous Node.js-specific security vulnerabilities — how does prototype pollution work and why is it especially dangerous in JavaScript, what makes regular expressions vulnerable to ReDoS attacks, why is child_process.exec vulnerable to shell injection while execFile is not, how do dependency supply chain attacks happen (typosquatting, compromised maintainers, install scripts), and what do npm audit and lockfile integrity checks actually protect against?</summary>
+<summary>15. What are the most dangerous Node.js-specific security vulnerabilities — how does prototype pollution work and why is it especially dangerous in JavaScript, what makes regular expressions vulnerable to ReDoS attacks, why is child_process.exec vulnerable to shell injection while execFile is not, how do dependency supply chain attacks happen (typosquatting, compromised maintainers, install scripts), and what do npm audit and lockfile integrity checks actually protect against?</summary>
 
 **1. Prototype pollution:**
 
@@ -947,7 +875,7 @@ execFile('ls', [userInput]); // passes "; rm -rf /" as a literal filename argume
 ## Practical — Implementation & Configuration
 
 <details>
-<summary>17. Build a stream pipeline that reads a large file, transforms each line (e.g., parse CSV to JSON), and writes the output to another file — use pipeline() instead of pipe(), implement proper backpressure handling, show what happens when the writable side is slower than the readable side, and explain why pipeline() is preferred for error handling and cleanup</summary>
+<summary>16. Build a stream pipeline that reads a large file, transforms each line (e.g., parse CSV to JSON), and writes the output to another file — use pipeline() instead of pipe(), implement proper backpressure handling, show what happens when the writable side is slower than the readable side, and explain why pipeline() is preferred for error handling and cleanup</summary>
 
 ```typescript
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -1077,7 +1005,7 @@ Always use `pipeline()`. There's no reason to use `pipe()` in new code.
 </details>
 
 <details>
-<summary>18. Implement a CPU-intensive task (e.g., hashing or data processing) using worker_threads — show the main thread and worker code, demonstrate message passing with postMessage and SharedArrayBuffer, and explain when you'd use a worker thread pool pattern vs spawning workers on demand</summary>
+<summary>17. Implement a CPU-intensive task (e.g., hashing or data processing) using worker_threads — show the main thread and worker code, demonstrate message passing with postMessage and SharedArrayBuffer, and explain when you'd use a worker thread pool pattern vs spawning workers on demand</summary>
 
 **Basic worker thread — message passing with postMessage:**
 
@@ -1208,7 +1136,7 @@ app.post('/hash', async (req, res) => {
 </details>
 
 <details>
-<summary>19. Implement AsyncLocalStorage to propagate a request ID through an HTTP request's entire lifecycle (middleware → service → database call → logger) — show the setup code, how to access the store in nested async functions, and what breaks if you use callbacks that aren't async-context-aware</summary>
+<summary>18. Implement AsyncLocalStorage to propagate a request ID through an HTTP request's entire lifecycle (middleware → service → database call → logger) — show the setup code, how to access the store in nested async functions, and what breaks if you use callbacks that aren't async-context-aware</summary>
 
 This builds on the AsyncLocalStorage concepts from Q9 with a complete, production-ready implementation.
 
@@ -1374,7 +1302,7 @@ emitter.on('data', () => {
 </details>
 
 <details>
-<summary>20. Set up the same REST endpoint in both Express (middleware chain) and Fastify (plugin with JSON schema validation) — show both implementations side by side, demonstrate how Fastify's schema-based serialization avoids JSON.stringify overhead, and explain the performance difference</summary>
+<summary>19. Set up the same REST endpoint in both Express (middleware chain) and Fastify (plugin with JSON schema validation) — show both implementations side by side, demonstrate how Fastify's schema-based serialization avoids JSON.stringify overhead, and explain the performance difference</summary>
 
 This builds on the architectural comparison in Q10 with concrete code.
 
@@ -1506,7 +1434,7 @@ This compiled serializer is 2-3x faster than `JSON.stringify` for typical API re
 </details>
 
 <details>
-<summary>21. Set up a Node.js package that supports both CommonJS (require) and ES Modules (import) consumers — show the package.json exports field, the directory structure with .cjs/.mjs files or dual builds, and explain the common pitfalls (dual package hazard, conditional exports resolution)</summary>
+<summary>20. Set up a Node.js package that supports both CommonJS (require) and ES Modules (import) consumers — show the package.json exports field, the directory structure with .cjs/.mjs files or dual builds, and explain the common pitfalls (dual package hazard, conditional exports resolution)</summary>
 
 This is the practical implementation of the dual-package concepts from Q8.
 
@@ -1665,144 +1593,10 @@ If your package has multiple entry points, each needs explicit exports:
 
 Without the `"./utils"` entry, `import { something } from 'my-lib/utils'` throws `ERR_PACKAGE_PATH_NOT_EXPORTED`, even if the file exists. The `exports` field acts as an allowlist.
 
-</details>
+</details>## Practical — Production Patterns
 
 <details>
-<summary>22. Show how to use Node.js core APIs in a realistic scenario — read a file with fs/promises, hash its contents with crypto, resolve paths cross-platform with path.join/path.resolve, and work with the raw binary data using Buffer. Explain why Buffer exists (Node.js handles binary data that JavaScript strings can't represent), when you'd use util.promisify vs the built-in promise APIs, and what common mistakes developers make with path manipulation across operating systems.</summary>
-
-**Realistic scenario — file integrity checker:**
-
-```typescript
-import { readFile, readdir, stat } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
-import path from 'node:path';
-
-interface FileChecksum {
-  filePath: string;
-  sha256: string;
-  sizeBytes: number;
-}
-
-async function checksumDirectory(dirPath: string): Promise<FileChecksum[]> {
-  // path.resolve converts relative paths to absolute using cwd
-  const absoluteDir = path.resolve(dirPath);
-  const entries = await readdir(absoluteDir);
-
-  const results: FileChecksum[] = [];
-
-  for (const entry of entries) {
-    // path.join handles OS separators — / on Unix, \ on Windows
-    const filePath = path.join(absoluteDir, entry);
-    const fileStat = await stat(filePath);
-
-    if (!fileStat.isFile()) continue;
-
-    // readFile returns a Buffer by default (no encoding argument)
-    const buffer: Buffer = await readFile(filePath);
-
-    // crypto works directly with Buffers — no string conversion needed
-    const hash = createHash('sha256').update(buffer).digest('hex');
-
-    results.push({
-      filePath: path.relative(process.cwd(), filePath), // relative for display
-      sha256: hash,
-      sizeBytes: buffer.byteLength,
-    });
-  }
-
-  return results;
-}
-
-// Working with Buffer directly
-function inspectBinaryFile(filePath: string): void {
-  const buf = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // PNG magic bytes
-
-  // Buffer gives you byte-level access
-  console.log(buf[0]); // 137 (0x89)
-  console.log(buf.toString('hex')); // '89504e47'
-  console.log(buf.subarray(0, 2)); // Buffer containing first 2 bytes
-
-  // Allocate fixed-size buffer (e.g., for protocol headers)
-  const header = Buffer.alloc(12); // 12 zero-filled bytes
-  header.writeUInt32BE(0x01, 0);   // write version at offset 0
-  header.writeUInt32BE(1024, 4);   // write payload length at offset 4
-  header.writeUInt32BE(0x02, 8);   // write message type at offset 8
-}
-```
-
-**Why Buffer exists:**
-
-JavaScript strings are UTF-16 encoded — they represent text. But Node.js handles raw binary data constantly: file contents, network packets, cryptographic output, image data, protocol headers. You can't represent a JPEG file as a JavaScript string without corruption (invalid UTF-16 sequences get mangled). Buffer is a fixed-size chunk of raw memory outside the V8 heap that gives you direct byte-level access.
-
-Key differences from strings:
-- Buffer is mutable; strings are immutable
-- Buffer has a fixed length; strings can be concatenated freely
-- Buffer stores raw bytes; strings store UTF-16 code units
-- Buffer can represent any binary data; strings only represent valid text
-
-**util.promisify vs built-in promise APIs:**
-
-```typescript
-import { readFile } from 'node:fs';            // callback-based
-import { readFile as readFileAsync } from 'node:fs/promises'; // built-in promise
-import { promisify } from 'node:util';
-
-// Modern approach — use the built-in promise API directly
-const content = await readFileAsync('/tmp/file.txt', 'utf8');
-
-// util.promisify — for older APIs that only have callback versions
-import { exec } from 'node:child_process';
-const execAsync = promisify(exec);
-const { stdout } = await execAsync('ls -la');
-```
-
-**When to use which:**
-- **Built-in promise APIs** (`fs/promises`, `dns/promises`, `timers/promises`): Always prefer these when available. They're native, well-typed, and maintained by the Node.js team.
-- **util.promisify**: Only for callback-based APIs that don't have a promise variant — third-party libraries, older Node.js APIs, or custom callback functions. It works with any function following the `(err, result) => void` callback convention.
-
-**Common path manipulation mistakes:**
-
-```typescript
-// WRONG: string concatenation — breaks on Windows
-const bad = '/home/user' + '/' + 'file.txt';
-
-// CORRECT: path.join handles OS separators
-const good = path.join('/home/user', 'file.txt');
-// Unix: /home/user/file.txt
-// Windows: \home\user\file.txt
-
-// WRONG: assuming cwd
-const risky = path.join('config', 'app.json');
-// Resolves relative to wherever the process started
-
-// CORRECT: resolve from a known base
-const safe = path.join(__dirname, 'config', 'app.json');
-// Or in ESM (no __dirname):
-import { fileURLToPath } from 'node:url';
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// WRONG: not normalizing user input (path traversal)
-const userInput = '../../etc/passwd';
-const dangerous = path.join('/uploads', userInput);
-// Result: /etc/passwd — path traversal attack
-
-// CORRECT: validate the resolved path stays within bounds
-const resolved = path.resolve('/uploads', userInput);
-if (!resolved.startsWith('/uploads/')) {
-  throw new Error('Path traversal detected');
-}
-
-// GOTCHA: path.extname behavior
-path.extname('archive.tar.gz');  // '.gz' — only the last extension
-path.extname('.gitignore');       // '' — dotfiles have no extension
-```
-
-</details>
-
-## Practical — Production Patterns
-
-<details>
-<summary>23. Implement graceful shutdown for a Node.js HTTP server — show the SIGTERM/SIGINT handlers that stop accepting new connections, drain in-flight requests with a timeout, clean up resources (database connections, open file handles), and exit with the correct code. What happens to long-running requests that exceed the grace period, and how does terminationGracePeriodSeconds in Kubernetes interact with your application-level grace period?</summary>
+<summary>21. Implement graceful shutdown for a Node.js HTTP server — show the SIGTERM/SIGINT handlers that stop accepting new connections, drain in-flight requests with a timeout, clean up resources (database connections, open file handles), and exit with the correct code. What happens to long-running requests that exceed the grace period, and how does terminationGracePeriodSeconds in Kubernetes interact with your application-level grace period?</summary>
 
 This is the implementation of the graceful shutdown concepts from Q11.
 
@@ -1941,7 +1735,7 @@ lifecycle:
 </details>
 
 <details>
-<summary>24. Implement a production error handling strategy that distinguishes between operational errors (network timeout, file not found, validation failure) and programmer errors (TypeError, null reference) — show how to structure try/catch boundaries, when to let the process crash vs recover, and how to handle unhandledRejection with proper logging</summary>
+<summary>22. Implement a production error handling strategy that distinguishes between operational errors (network timeout, file not found, validation failure) and programmer errors (TypeError, null reference) — show how to structure try/catch boundaries, when to let the process crash vs recover, and how to handle unhandledRejection with proper logging</summary>
 
 This is the implementation of the error philosophy from Q12.
 
@@ -2108,7 +1902,7 @@ Error occurs
 </details>
 
 <details>
-<summary>25. Given a code snippet that mixes setTimeout, setImmediate, process.nextTick(), Promise.then(), and queueMicrotask() — predict the exact execution order, explain why each callback runs when it does, and show how wrapping the same code inside an I/O callback (e.g., fs.readFile) changes the order</summary>
+<summary>23. Given a code snippet that mixes setTimeout, setImmediate, process.nextTick(), Promise.then(), and queueMicrotask() — predict the exact execution order, explain why each callback runs when it does, and show how wrapping the same code inside an I/O callback (e.g., fs.readFile) changes the order</summary>
 
 This applies the event loop theory from Q3 and Q14 to a concrete prediction exercise.
 
@@ -2220,305 +2014,10 @@ process.nextTick(() => {
 
 The nextTick queue is drained completely (including new entries added during draining) before the microtask queue gets a turn. This is why recursive nextTick can starve microtasks (as covered in Q14).
 
-</details>
+</details>## Practical — Debugging & Profiling
 
 <details>
-<summary>26. You're running a Node.js app that makes many DNS lookups and file system calls, and you notice requests stalling under load — demonstrate how to diagnose that the default libuv thread pool (size 4) is the bottleneck, show how to set UV_THREADPOOL_SIZE correctly, and explain why setting it too high is also harmful</summary>
-
-This is the practical debugging scenario for the thread pool concepts from Q4.
-
-**Symptoms that point to thread pool saturation:**
-
-- Request latency spikes under load, but CPU usage stays low (the main thread is idle, waiting for thread pool work to complete).
-- Event loop lag is low (the event loop itself isn't blocked — it's just waiting for callbacks from the thread pool).
-- Latency is worst on endpoints that do DNS lookups + file I/O, not on endpoints that only do network I/O (since network I/O doesn't use the thread pool).
-- Adding more instances helps linearly (each instance gets its own pool of 4 threads).
-
-**Diagnosing the bottleneck:**
-
-```typescript
-// 1. Measure DNS lookup time vs network time
-import { performance } from 'node:perf_hooks';
-import dns from 'node:dns';
-
-const start = performance.now();
-dns.lookup('api.example.com', (err, address) => {
-  const lookupMs = performance.now() - start;
-  console.log(`DNS lookup took ${lookupMs}ms`); // If >50ms under load, pool is saturated
-});
-
-// 2. Monitor thread pool queue depth with UV_THREADPOOL_SIZE diagnostic
-// There's no direct API for queue depth, but you can infer it:
-
-// Simple probe: schedule a trivial fs operation and measure how long
-// it takes to START executing (not complete — just start)
-import { stat } from 'node:fs';
-
-function measureThreadPoolLatency(): Promise<number> {
-  const start = performance.now();
-  return new Promise((resolve) => {
-    // stat on a tiny file is fast — any delay is from waiting for a thread
-    stat('/dev/null', () => resolve(performance.now() - start));
-  });
-}
-
-// Expose as a Prometheus metric
-setInterval(async () => {
-  const latencyMs = await measureThreadPoolLatency();
-  threadPoolLatencyGauge.set(latencyMs);
-  if (latencyMs > 10) {
-    console.warn(`Thread pool latency: ${latencyMs.toFixed(1)}ms — pool may be saturated`);
-  }
-}, 5000);
-
-// 3. Use 'active-handles' to see what's queued
-// In a diagnostic endpoint:
-console.log('Active handles:', process._getActiveHandles().length);
-console.log('Active requests:', process._getActiveRequests().length);
-// High numbers suggest many pending thread pool operations
-```
-
-**Proving it's the thread pool — the definitive test:**
-
-```bash
-# Run your load test with default pool size
-UV_THREADPOOL_SIZE=4 node server.js
-# Measure p99 latency under load: e.g., 500ms
-
-# Increase pool size and re-run identical load test
-UV_THREADPOOL_SIZE=16 node server.js
-# Measure p99 latency: e.g., 50ms
-
-# If latency drops significantly, the thread pool was the bottleneck
-```
-
-**Setting UV_THREADPOOL_SIZE correctly:**
-
-```bash
-# Must be set as env var BEFORE process starts — read once, cannot change at runtime
-UV_THREADPOOL_SIZE=16 node server.js
-```
-
-**Sizing heuristic:**
-
-```
-UV_THREADPOOL_SIZE = number of concurrent thread-pool operations you expect
-
-Typical operations per request that use the thread pool:
-- dns.lookup()     → 1 thread
-- fs.readFile()    → 1 thread
-- crypto.pbkdf2()  → 1 thread
-- zlib.inflate()   → 1 thread
-
-If each request does dns.lookup + fs.readFile = 2 thread pool ops,
-and you want to handle 8 concurrent requests without queuing:
-UV_THREADPOOL_SIZE = 8 × 2 = 16
-```
-
-Common production values: 8-64, depending on workload. Most apps do well with 16-32.
-
-**Why setting it too high is harmful:**
-
-1. **Memory overhead:** Each thread has a stack (default ~8MB on Linux, though only pages actually used are allocated). 128 threads × 8MB = 1GB of virtual memory reserved for stacks alone.
-
-2. **Context switching:** With more threads than CPU cores, the OS spends time switching between threads rather than doing work. Beyond ~2x CPU cores, you get diminishing returns and increasing overhead.
-
-3. **Thundering herd on startup:** If you set `UV_THREADPOOL_SIZE=1024` and your app does a burst of file operations at startup, you spawn 1024 threads simultaneously — the OS scheduler struggles and startup time increases.
-
-4. **Hides the real problem:** A very large thread pool masks architectural issues. If every request needs 3 thread pool operations, the real fix is to reduce thread pool usage:
-   - Replace `dns.lookup()` with `dns.resolve()` (uses c-ares, not the thread pool)
-   - Cache DNS results
-   - Use an HTTP client that reuses connections (avoids repeated DNS lookups)
-   - Buffer file reads in memory if the data is small and read frequently
-
-**Rule of thumb:** Start with `UV_THREADPOOL_SIZE` equal to the number of CPU cores × 2. Load test. If thread pool latency is still high, increase gradually. If it's already low, don't increase — you're paying memory overhead for nothing.
-
-</details>
-
-<details>
-<summary>27. Create a custom EventEmitter subclass that properly handles the 'error' event, sets appropriate maxListeners, and prevents memory leaks from unremoved listeners — show what happens when you emit 'error' without a listener, how to debug the "MaxListenersExceededWarning," and the pattern for cleanup in long-lived emitters</summary>
-
-**Custom EventEmitter subclass with proper error handling:**
-
-```typescript
-import { EventEmitter } from 'node:events';
-
-interface JobEvents {
-  progress: [percent: number];
-  complete: [result: unknown];
-  error: [error: Error];
-}
-
-class JobProcessor extends EventEmitter {
-  private cleanupFns: Array<() => void> = [];
-
-  constructor() {
-    super();
-
-    // Set maxListeners based on expected usage
-    // Default is 10 — increase only if you know you need more
-    this.setMaxListeners(20);
-
-    // ALWAYS have a default error handler to prevent process crash
-    this.on('error', (err: Error) => {
-      console.error(`[JobProcessor] Unhandled error: ${err.message}`);
-    });
-  }
-
-  async process(data: unknown) {
-    try {
-      this.emit('progress', 0);
-      const result = await this.doWork(data);
-      this.emit('progress', 100);
-      this.emit('complete', result);
-    } catch (err) {
-      this.emit('error', err instanceof Error ? err : new Error(String(err)));
-    }
-  }
-
-  // Pattern for registering listeners with automatic cleanup
-  onWithCleanup(event: string, listener: (...args: unknown[]) => void): () => void {
-    this.on(event, listener);
-    const cleanup = () => this.removeListener(event, listener);
-    this.cleanupFns.push(cleanup);
-    return cleanup; // caller can also trigger cleanup manually
-  }
-
-  destroy() {
-    // Remove all registered listeners
-    for (const fn of this.cleanupFns) fn();
-    this.cleanupFns = [];
-    this.removeAllListeners();
-  }
-
-  private async doWork(data: unknown): Promise<unknown> {
-    // simulate work
-    return { processed: true };
-  }
-}
-```
-
-**What happens when you emit 'error' without a listener:**
-
-```typescript
-const emitter = new EventEmitter();
-
-// This CRASHES the process with an uncaught exception
-emitter.emit('error', new Error('something failed'));
-// Error: something failed
-//     at ...
-// The process exits with code 1
-```
-
-This is by design in Node.js — the `'error'` event is special. If emitted with no listeners, Node.js treats it as an unhandled exception and throws it. This forces developers to handle errors explicitly rather than silently swallowing them.
-
-**Prevention strategies:**
-
-```typescript
-// Option 1: Always register an error listener
-emitter.on('error', (err) => { /* handle it */ });
-
-// Option 2: Use events.errorMonitor (Node.js 13+) for observability
-// without affecting the throw behavior
-import { errorMonitor } from 'node:events';
-emitter.on(errorMonitor, (err) => {
-  logger.error('Error observed', { error: err.message });
-  // This doesn't prevent the throw — it's for monitoring only
-});
-```
-
-**Debugging "MaxListenersExceededWarning":**
-
-This warning fires when more than `maxListeners` (default 10) listeners are added to a single event. It usually indicates a memory leak — listeners being added repeatedly without removal.
-
-```typescript
-// LEAK: adding a listener on every request, never removing
-server.on('request', (req, res) => {
-  const handler = () => console.log('db error');
-  database.on('error', handler);
-  // handler is never removed — accumulates with each request
-});
-
-// After 11 requests:
-// MaxListenersExceededWarning: Possible EventEmitter memory leak detected.
-// 11 error listeners added to [Database].
-// Use emitter.setMaxListeners() to increase limit
-```
-
-**Debugging steps:**
-
-```typescript
-// 1. Find what's adding listeners — use the trace
-process.on('warning', (warning) => {
-  console.warn(warning.name);    // MaxListenersExceededWarning
-  console.warn(warning.message); // tells you which event and emitter
-  console.warn(warning.stack);   // stack trace showing WHERE listeners are added
-});
-
-// 2. Or run with the trace-warnings flag
-// node --trace-warnings server.js
-
-// 3. Inspect listener counts programmatically
-console.log(emitter.listenerCount('error'));  // how many?
-console.log(emitter.listeners('error'));       // which functions?
-console.log(emitter.eventNames());             // which events have listeners?
-```
-
-**Cleanup patterns for long-lived emitters:**
-
-```typescript
-// Pattern 1: Use AbortController for scoped listener lifetime
-import { addAbortListener } from 'node:events';
-
-function handleRequest(req: Request, dbEmitter: EventEmitter) {
-  const ac = new AbortController();
-
-  const handler = (err: Error) => {
-    console.error('DB error during request:', err);
-  };
-  dbEmitter.on('error', handler);
-
-  // addAbortListener safely removes the listener when ac.abort() is called
-  addAbortListener(ac.signal, () => dbEmitter.removeListener('error', handler));
-
-  // After request completes, clean up
-  req.on('close', () => ac.abort());
-}
-
-// Pattern 2: Use 'once' for one-shot listeners
-emitter.once('ready', () => {
-  // Automatically removed after first invocation — no leak possible
-});
-
-// Pattern 3: Track and clean up manually
-class RequestHandler {
-  private listeners: Array<{ emitter: EventEmitter; event: string; fn: Function }> = [];
-
-  addListener(emitter: EventEmitter, event: string, fn: (...args: unknown[]) => void) {
-    emitter.on(event, fn);
-    this.listeners.push({ emitter, event, fn });
-  }
-
-  cleanup() {
-    for (const { emitter, event, fn } of this.listeners) {
-      emitter.removeListener(event, fn as any);
-    }
-    this.listeners = [];
-  }
-}
-```
-
-**When to increase maxListeners vs fix the leak:**
-
-- **Increase** when you legitimately have many listeners (e.g., a pub/sub hub with many subscribers, a connection pool with many health monitors).
-- **Fix the leak** when listeners are added per-request or per-event without cleanup — this is always a bug, not a legitimate use case. Use `setMaxListeners(0)` (unlimited) only if you've verified it's not a leak.
-
-</details>
-
-## Practical — Debugging & Profiling
-
-<details>
-<summary>28. Walk through diagnosing a memory leak in a Node.js application — show how to take heap snapshots with --inspect and Chrome DevTools (or the heapdump module), how to compare two snapshots to find retained objects, how to identify common culprits (growing arrays, closures, event listeners), how process.memoryUsage() and v8.getHeapStatistics() help you monitor memory programmatically, and what --max-old-space-size controls</summary>
+<summary>24. Walk through diagnosing a memory leak in a Node.js application — show how to take heap snapshots with --inspect and Chrome DevTools (or the heapdump module), how to compare two snapshots to find retained objects, how to identify common culprits (growing arrays, closures, event listeners), how process.memoryUsage() and v8.getHeapStatistics() help you monitor memory programmatically, and what --max-old-space-size controls</summary>
 
 This is the practical diagnostic workflow for the GC concepts from Q7 and the diagnostics overview from Q13.
 
@@ -2645,7 +2144,7 @@ Without this, the default 1.5GB exceeds a 1GB container and the OOM killer termi
 </details>
 
 <details>
-<summary>29. A Node.js API has intermittent slow responses — walk through generating a CPU profile (--prof or Chrome DevTools), reading a flame graph to identify hot functions, and determining whether the bottleneck is synchronous code blocking the event loop, excessive GC pauses, or something else entirely</summary>
+<summary>25. A Node.js API has intermittent slow responses — walk through generating a CPU profile (--prof or Chrome DevTools), reading a flame graph to identify hot functions, and determining whether the bottleneck is synchronous code blocking the event loop, excessive GC pauses, or something else entirely</summary>
 
 This builds on the diagnostics overview from Q13 with a step-by-step profiling walkthrough.
 
@@ -2766,7 +2265,7 @@ Intermittent slow responses
 </details>
 
 <details>
-<summary>30. Your Node.js service in production starts throwing ECONNRESET errors on outbound HTTP requests and EMFILE errors when opening files — explain what each error means at the OS level, walk through the debugging steps (checking open file descriptors with lsof, ulimit settings, connection pool configuration), and show the fixes</summary>
+<summary>26. Your Node.js service in production starts throwing ECONNRESET errors on outbound HTTP requests and EMFILE errors when opening files — explain what each error means at the OS level, walk through the debugging steps (checking open file descriptors with lsof, ulimit settings, connection pool configuration), and show the fixes</summary>
 
 **ECONNRESET — what it means at the OS level:**
 
@@ -2917,106 +2416,14 @@ ulimit -n 65536
 
 Increasing `ulimit` is a band-aid — it raises the ceiling but doesn't fix the leak. Always find and fix the root cause (unclosed handles, unbounded concurrency, connection pool misconfiguration) and then set a reasonable limit as a safety net.
 
-</details>
-
-<details>
-<summary>31. Your Node.js API's p99 latency has doubled over the past week with no code changes — use clinic.js (Doctor, Flame, Bubbleprof) to diagnose the regression. Explain what each clinic.js tool measures, walk through the workflow of running clinic doctor for an initial diagnosis then drilling down with clinic flame or bubbleprof based on the findings, and how to interpret the output to identify the root cause</summary>
-
-**The three clinic.js tools and what each measures:**
-
-| Tool | What it measures | When to use |
-|---|---|---|
-| **clinic doctor** | CPU usage, memory, event loop delay, active handles — all on one dashboard | First step — triage. Identifies the category of problem. |
-| **clinic flame** | CPU profiling as an interactive flame graph (built on 0x) | When doctor says "event loop blocked" or CPU is high |
-| **clinic bubbleprof** | Async operation timing — visualizes time spent waiting in async operations | When doctor says "I/O issue" or latency is high but CPU is low |
-
-**Step 1 — Run clinic doctor for triage:**
-
-```bash
-# Install globally or per-project
-npm install -g clinic
-
-# Run doctor with your server + a load test
-clinic doctor -- node server.js
-# In another terminal, send load:
-autocannon -d 30 -c 100 http://localhost:3000/api/endpoint
-# Stop the server (Ctrl+C) — doctor opens a browser dashboard
-```
-
-**Interpreting doctor's output:**
-
-Doctor shows four charts over time: CPU %, RSS memory, event loop delay, and active handles. It also gives a text recommendation:
-
-- **"Event loop is blocked"** → CPU chart is high, event loop delay spikes. Something synchronous is hogging the thread. → Use **clinic flame** next.
-- **"I/O issue detected"** → CPU is low, event loop delay is low, but latency is high. Time is spent waiting for I/O (database, file system, network). → Use **clinic bubbleprof** next.
-- **"Memory issue detected"** → RSS grows monotonically. Likely a memory leak causing GC pressure. → Use heap snapshots (Q28).
-- **"Active handles growing"** → File descriptors or connections are leaking. → Check for unclosed handles (Q30).
-
-**Step 2a — Drill down with clinic flame (event loop blocked):**
-
-```bash
-clinic flame -- node server.js
-# Send load, stop, flame graph opens in browser
-```
-
-**Reading the clinic flame graph:**
-
-- The visualization is an interactive flame chart — click to zoom into call stacks.
-- **Hot (red/orange) bars at the top** are functions consuming the most CPU. Click them to see the full call stack.
-- **Look for your application code**, not V8 internals. Filter by clicking the "app only" toggle.
-- **Common findings for "no code changes" regressions:**
-  - A dependency updated (transitive dep via lockfile changes) that introduced a slower code path.
-  - Data volume increased — a `JSON.stringify` on a growing dataset, or an O(n^2) operation hitting larger n.
-  - A cache expired or external service got slower, causing more fallback computation.
-
-Example finding: `JSON.stringify` takes 35% of CPU time, called from `serializeResponse` → the response payload grew because a database query started returning more data.
-
-**Step 2b — Drill down with clinic bubbleprof (I/O issue):**
-
-```bash
-clinic bubbleprof -- node server.js
-# Send load, stop, visualization opens in browser
-```
-
-**Reading bubbleprof output:**
-
-Bubbleprof shows async operations as bubbles. Size = time spent. Color = type (network, file, etc.). Lines between bubbles show the async flow.
-
-- **Large bubbles** = operations taking a long time. Click to see what they are.
-- **Clusters of bubbles** on the same async resource = a bottleneck (e.g., all requests waiting on the same database pool).
-- **Common findings for "no code changes" regressions:**
-  - Database query latency increased (larger tables, missing index, connection pool exhaustion).
-  - A downstream service got slower (new version deployed, increased load).
-  - DNS resolution got slower (DNS server change, cache eviction).
-  - Thread pool saturation (as covered in Q26) — file/DNS operations waiting for threads.
-
-**Step 3 — Identify the root cause for "no code changes" regression:**
-
-If there were truly no code changes, the regression comes from the environment changing:
-
-```
-Checklist for "no code changes" latency regression:
-1. Did a transitive dependency update? → Check lockfile diff
-2. Did data volume grow? → Check database table sizes, response payload sizes
-3. Did a downstream service change? → Check dependency service deploy history
-4. Did infrastructure change? → New node type, different CPU throttling, network config
-5. Did DNS/certificate changes happen? → Check DNS TTLs, cert renewal
-6. Did the database get slower? → Check slow query logs, index usage, connection pool metrics
-7. Did container resources change? → CPU limits, memory limits, cgroup throttling
-```
-
-The clinic.js workflow (doctor → flame or bubbleprof) narrows the search space quickly: doctor tells you *what kind* of problem it is, and flame/bubbleprof tells you *where* in the code it's happening.
-
-</details>
-
----
+</details>---
 
 ## Experience-Based Questions
 
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>32. Tell me about a time you debugged a memory leak or performance issue in a Node.js application — what were the symptoms, what tools did you use, and what was the root cause?</summary>
+<summary>27. Tell me about a time you debugged a memory leak or performance issue in a Node.js application — what were the symptoms, what tools did you use, and what was the root cause?</summary>
 
 **What the interviewer is looking for:**
 
@@ -3053,7 +2460,7 @@ These questions test real-world experience. Prepare by mapping them to your own 
 </details>
 
 <details>
-<summary>33. Describe a time you had to choose between worker threads, child processes, or the cluster module for scaling a Node.js service — what was the workload, what did you choose and why, and what were the results?</summary>
+<summary>28. Describe a time you had to choose between worker threads, child processes, or the cluster module for scaling a Node.js service — what was the workload, what did you choose and why, and what were the results?</summary>
 
 **What the interviewer is looking for:**
 
@@ -3089,7 +2496,7 @@ These questions test real-world experience. Prepare by mapping them to your own 
 </details>
 
 <details>
-<summary>34. Tell me about a time you had to deal with a Node.js security issue in production or during development — what was the vulnerability (dependency issue, prototype pollution, ReDoS, supply chain attack), how did you discover it, and what did you do to prevent it from recurring?</summary>
+<summary>29. Tell me about a time you had to deal with a Node.js security issue in production or during development — what was the vulnerability (dependency issue, prototype pollution, ReDoS, supply chain attack), how did you discover it, and what did you do to prevent it from recurring?</summary>
 
 **What the interviewer is looking for:**
 
@@ -3127,7 +2534,7 @@ These questions test real-world experience. Prepare by mapping them to your own 
 </details>
 
 <details>
-<summary>35. Describe a time you handled a production Node.js incident — what went wrong (OOM, unhandled rejections, event loop blocking, cascading failures), how did you diagnose and resolve it, and what changes did you make to prevent it from recurring?</summary>
+<summary>30. Describe a time you handled a production Node.js incident — what went wrong (OOM, unhandled rejections, event loop blocking, cascading failures), how did you diagnose and resolve it, and what changes did you make to prevent it from recurring?</summary>
 
 **What the interviewer is looking for:**
 
