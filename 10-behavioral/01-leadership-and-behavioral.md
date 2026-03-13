@@ -1,6 +1,6 @@
 # Leadership & Behavioral
 
-> **20 questions**
+> **22 questions**
 
 - STAR method for structuring behavioral answers
 - Technical decision-making: evaluating options, building consensus, owning mistakes
@@ -8,11 +8,13 @@
 - Conflict resolution: disagreements with peers, managers, and senior engineers
 - Cross-team collaboration: conflicting priorities, aligning multiple stakeholders
 - Influence without authority: leading technical initiatives, driving adoption of ideas across teams, building credibility
+- Mentoring and growing engineers: feedback delivery, structuring growth
 - Ownership and initiative: driving projects end-to-end, identifying problems proactively, acting without being told
 - Ambiguous requirements: creating clarity, scoping loosely defined initiatives
 - Incident handling: production incidents, on-call pressure, blameless postmortems
 - Pushing back: unreasonable deadlines, saying no to product/leadership, proposing tradeoffs
 - Technical debt: identifying, prioritizing, and convincing stakeholders
+- Failure and learning: projects that shipped late, what you'd do differently
 - Balancing speed vs engineering quality
 - Prioritization: managing competing workstreams, deciding what not to do, protecting focus time
 
@@ -89,70 +91,84 @@
 </details>
 
 <details>
-<summary>11. Tell me about a time you were given a project or initiative with ambiguous or poorly defined requirements — how did you create clarity out of the ambiguity, what questions did you ask and to whom, and how did you decide what to build first when the scope was unclear?</summary>
+<summary>11. Tell me about a time you mentored a junior or mid-level engineer — what was the situation, how did you structure your mentoring (pairing, code reviews, stretch assignments), how did you deliver feedback that was honest but constructive, and how did the person grow as a result?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>12. Describe a time you had to scope and break down a loosely defined initiative into concrete deliverables — how did you decide what was in scope vs out of scope, how did you communicate the plan to stakeholders who had vague expectations, and how did you handle scope creep as the project progressed?</summary>
+<summary>12. Tell me about a time you were given a project or initiative with ambiguous or poorly defined requirements — how did you create clarity out of the ambiguity, what questions did you ask and to whom, and how did you decide what to build first when the scope was unclear?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>13. Tell me about a production incident you were involved in — what happened, what was your role during the incident, how did you handle the pressure (especially if it was during on-call hours), and what steps did you take to resolve it? How did the experience change how you approach on-call readiness?</summary>
+<summary>13. Describe a time you had to scope and break down a loosely defined initiative into concrete deliverables — how did you decide what was in scope vs out of scope, how did you communicate the plan to stakeholders who had vague expectations, and how did you handle scope creep as the project progressed?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>14. Describe how you've led or participated in a blameless postmortem after a significant incident — how did you structure the discussion to focus on systemic causes instead of individual blame, what action items came out of it, and how did you ensure those action items actually got completed rather than forgotten?</summary>
+<summary>14. Tell me about a production incident you were involved in — what happened, what was your role during the incident, how did you handle the pressure (especially if it was during on-call hours), and what steps did you take to resolve it? How did the experience change how you approach on-call readiness?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>15. Tell me about a time you pushed back on an unreasonable deadline — how did you assess that the deadline was unreachable, how did you communicate this to product or leadership without just saying "no," and what alternatives or tradeoffs did you propose? What happened as a result?</summary>
+<summary>15. Describe how you've led or participated in a blameless postmortem after a significant incident — how did you structure the discussion to focus on systemic causes instead of individual blame, what action items came out of it, and how did you ensure those action items actually got completed rather than forgotten?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>16. Describe a situation where you had to say no to a request from product, leadership, or another team — what was the request, why did you push back, how did you frame your reasoning so it didn't come across as obstructionist, and how did you maintain the relationship afterward?</summary>
+<summary>16. Tell me about a time you pushed back on an unreasonable deadline — how did you assess that the deadline was unreachable, how did you communicate this to product or leadership without just saying "no," and what alternatives or tradeoffs did you propose? What happened as a result?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>17. Tell me about a time you identified significant technical debt that was slowing down your team — how did you discover it, how did you assess its impact and prioritize it against feature work, and what was your approach to paying it down incrementally rather than asking for a full stop?</summary>
+<summary>17. Describe a situation where you had to say no to a request from product, leadership, or another team — what was the request, why did you push back, how did you frame your reasoning so it didn't come across as obstructionist, and how did you maintain the relationship afterward?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>18. Describe a time you had to convince non-technical stakeholders (product managers, leadership) that investing engineering time in technical debt or infrastructure improvements was worth it — what arguments did you use, how did you frame the business impact, and what was the outcome?</summary>
+<summary>18. Tell me about a time you identified significant technical debt that was slowing down your team — how did you discover it, how did you assess its impact and prioritize it against feature work, and what was your approach to paying it down incrementally rather than asking for a full stop?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>19. Tell me about a time you had to balance shipping fast against engineering quality — what was the context, how did you decide where to cut corners and where to hold the line, what was the outcome, and how do you think about this tradeoff as a general principle rather than a one-time decision?</summary>
+<summary>19. Describe a time you had to convince non-technical stakeholders (product managers, leadership) that investing engineering time in technical debt or infrastructure improvements was worth it — what arguments did you use, how did you frame the business impact, and what was the outcome?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>20. Tell me about a time you were pulled in multiple directions with competing priorities and more work than you could realistically do well — how did you decide what to focus on and what to deprioritize or say no to, how did you communicate those tradeoffs, and what strategies do you use to protect deep focus time when demands keep piling up?</summary>
+<summary>20. Tell me about a time you had to balance shipping fast against engineering quality — what was the context, how did you decide where to cut corners and where to hold the line, what was the outcome, and how do you think about this tradeoff as a general principle rather than a one-time decision?</summary>
+
+<!-- Answer framework will be added later -->
+
+</details>
+
+<details>
+<summary>21. Tell me about a time you were pulled in multiple directions with competing priorities and more work than you could realistically do well — how did you decide what to focus on and what to deprioritize or say no to, how did you communicate those tradeoffs, and what strategies do you use to protect deep focus time when demands keep piling up?</summary>
+
+<!-- Answer framework will be added later -->
+
+</details>
+
+<details>
+<summary>22. Tell me about a project that shipped significantly later than planned — what caused the delays, what was your role in identifying and communicating the slip, what did you learn about estimation and planning, and what would you do differently if you could start the project over?</summary>
 
 <!-- Answer framework will be added later -->
 

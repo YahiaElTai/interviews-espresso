@@ -1,6 +1,6 @@
 # Interview Espresso
 
-Essential interview prep — distilled from the comprehensive [interviews](https://github.com/YahiaElTai/interviews) repo. Same answer quality, ~60-70% of the scope.
+A smaller, focused version of the comprehensive [interviews](https://github.com/YahiaElTai/interviews) repo. Same answer quality, ~60-70% of the scope. Used the same way as the main repo: interview prep, day-to-day knowledge base, and quick reference. Every question earns its place by being relevant to senior backend interviews, foundational for daily work, or commonly asked by real companies.
 
 See [README.md](README.md) for the full project description, the 5 Pillars, file format, and topic structure.
 

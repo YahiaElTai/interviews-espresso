@@ -1,10 +1,11 @@
 # Scaling & Reliability
 
-> **25 questions** — 12 theory, 13 practical
+> **26 questions** — 13 theory, 13 practical
 
 - Horizontal vs vertical scaling — tradeoffs, hidden costs of horizontal (state management, coordination, consistency, DB connection exhaustion, cache stampede), when vertical wins
 - Stateless service design — shared-nothing architecture, externalizing session state to Redis/database, why statelessness is a prerequisite for horizontal scaling
 - Database scaling — read replicas (routing reads vs writes, replication lag handling), partitioning, sharding as last resort
+- Multi-region scaling — active-active vs active-passive, latency-based routing, regional failover, data replication challenges across regions
 - Capacity planning — traffic estimation, identifying scaling triggers (CPU, queue depth, latency), headroom planning, when to scale proactively vs reactively
 - Reliability as a design concern — redundancy (no single points of failure), fault isolation (blast radius containment, bulkhead boundaries), designing for failure from day one vs bolting it on
 - Graceful degradation — feature flags, fallback responses, read-only mode, queue shedding, fallback chains, per-dependency timeout and circuit breaker placement
@@ -102,17 +103,24 @@
 
 </details>
 
+<details>
+<summary>13. What are the tradeoffs between active-active and active-passive multi-region architectures — how does latency-based routing work, what makes regional failover harder than it sounds, and what data replication challenges (conflict resolution, eventual consistency, write routing) make active-active significantly more complex than active-passive?</summary>
+
+<!-- Answer will be added later -->
+
+</details>
+
 ## Practical — Implementation & Configuration
 
 <details>
-<summary>13. Show how you'd implement graceful degradation in a Node.js service that depends on a recommendation engine and a payment service — demonstrate fallback responses when the recommendation engine is down (cached/default recommendations), feature flag-driven degradation to read-only mode, and explain how you'd prioritize which capabilities to shed under increasing failure</summary>
+<summary>14. Show how you'd implement graceful degradation in a Node.js service that depends on a recommendation engine and a payment service — demonstrate fallback responses when the recommendation engine is down (cached/default recommendations), feature flag-driven degradation to read-only mode, and explain how you'd prioritize which capabilities to shed under increasing failure</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>14. Implement a backpressure mechanism in a Node.js service that consumes from a message queue — show how you'd use queue depth as a signal to slow down consumption, how to propagate backpressure upstream (e.g., returning HTTP 429 or pausing consumers), and what load shedding looks like when the queue hits a critical depth threshold</summary>
+<summary>15. Implement a backpressure mechanism in a Node.js service that consumes from a message queue — show how you'd use queue depth as a signal to slow down consumption, how to propagate backpressure upstream (e.g., returning HTTP 429 or pausing consumers), and what load shedding looks like when the queue hits a critical depth threshold</summary>
 
 <!-- Answer will be added later -->
 
@@ -121,14 +129,14 @@
 ## Practical — Database Scaling
 
 <details>
-<summary>15. Set up read replica routing in a Node.js/TypeScript application — show how you'd configure the database client to send writes to the primary and reads to replicas, handle the replication lag problem for read-after-write scenarios (e.g., user creates a record then immediately views it), and explain the tradeoffs between routing strategies (sticky connections, primary fallback, causal consistency tokens)</summary>
+<summary>16. Set up read replica routing in a Node.js/TypeScript application — show how you'd configure the database client to send writes to the primary and reads to replicas, handle the replication lag problem for read-after-write scenarios (e.g., user creates a record then immediately views it), and explain the tradeoffs between routing strategies (sticky connections, primary fallback, causal consistency tokens)</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>16. A service scaled to 50 instances is exhausting database connections — walk through how you'd diagnose this, show how to configure connection pooling (PgBouncer or application-level pooling), calculate the right pool size given instance count and database connection limits, and explain the tradeoffs between transaction-level and session-level pooling modes</summary>
+<summary>17. A service scaled to 50 instances is exhausting database connections — walk through how you'd diagnose this, show how to configure connection pooling (PgBouncer or application-level pooling), calculate the right pool size given instance count and database connection limits, and explain the tradeoffs between transaction-level and session-level pooling modes</summary>
 
 <!-- Answer will be added later -->
 
@@ -137,21 +145,21 @@
 ## Practical — Deployment Reliability
 
 <details>
-<summary>17. Configure a zero-downtime deployment for a Node.js service running in Kubernetes — show the Deployment spec with rolling update strategy, the application-level SIGTERM handler that stops accepting new requests and drains in-flight connections, the preStop hook, and proper terminationGracePeriodSeconds. Walk through the full shutdown sequence and explain what happens to requests in transit at each step</summary>
+<summary>18. Configure a zero-downtime deployment for a Node.js service running in Kubernetes — show the Deployment spec with rolling update strategy, the application-level SIGTERM handler that stops accepting new requests and drains in-flight connections, the preStop hook, and proper terminationGracePeriodSeconds. Walk through the full shutdown sequence and explain what happens to requests in transit at each step</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>18. A rolling deployment is causing intermittent 502 errors — walk through the diagnosis process: why do 502s happen during rollouts (premature pod termination before connections drain, readiness probe misconfiguration, load balancer not updated), how you'd identify which step in the rollout sequence is causing the issue, and what the specific fixes are for each root cause</summary>
+<summary>19. A rolling deployment is causing intermittent 502 errors — walk through the diagnosis process: why do 502s happen during rollouts (premature pod termination before connections drain, readiness probe misconfiguration, load balancer not updated), how you'd identify which step in the rollout sequence is causing the issue, and what the specific fixes are for each root cause</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>19. Configure readiness probes for a Node.js service that depends on a database and a Redis cache — show how the readiness check verifies downstream dependencies are reachable, explain why readiness probes should check dependency health vs just returning 200, what happens when the probe fails (traffic removed but pod stays running), and how misconfigured readiness probes can cause cascading failures when a shared dependency goes down</summary>
+<summary>20. Configure readiness probes for a Node.js service that depends on a database and a Redis cache — show how the readiness check verifies downstream dependencies are reachable, explain why readiness probes should check dependency health vs just returning 200, what happens when the probe fails (traffic removed but pod stays running), and how misconfigured readiness probes can cause cascading failures when a shared dependency goes down</summary>
 
 <!-- Answer will be added later -->
 
@@ -160,21 +168,21 @@
 ## Practical — Debugging & Troubleshooting
 
 <details>
-<summary>20. After scaling a service from 3 to 20 instances, you observe a sudden spike of identical requests hitting the database — diagnose this as a cache stampede, explain why it happens specifically during horizontal scale-out (cold caches on new instances, synchronized TTL expiry), and show the concrete fixes: request coalescing, staggered TTLs, cache warming on startup, and probabilistic early recomputation</summary>
+<summary>21. After scaling a service from 3 to 20 instances, you observe a sudden spike of identical requests hitting the database — diagnose this as a cache stampede, explain why it happens specifically during horizontal scale-out (cold caches on new instances, synchronized TTL expiry), and show the concrete fixes: request coalescing, staggered TTLs, cache warming on startup, and probabilistic early recomputation</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>21. Service A calls Service B, which calls Service C. Service C starts responding slowly (2s instead of 200ms). Within minutes, all three services are failing — walk through exactly how retry amplification caused this cascade: how retries at each layer multiplied the load, why timeouts were configured incorrectly, and show the specific changes to retry budgets, per-layer timeouts, and circuit breaker thresholds that would have prevented this</summary>
+<summary>22. Service A calls Service B, which calls Service C. Service C starts responding slowly (2s instead of 200ms). Within minutes, all three services are failing — walk through exactly how retry amplification caused this cascade: how retries at each layer multiplied the load, why timeouts were configured incorrectly, and show the specific changes to retry budgets, per-layer timeouts, and circuit breaker thresholds that would have prevented this</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>22. A message queue's depth is growing rapidly and consumer lag is increasing — walk through how you'd diagnose whether this is a backpressure problem (consumers can't keep up) vs a traffic spike (producers sending more than normal), what immediate load shedding steps you'd take to prevent the queue from overwhelming downstream services, and how you'd set up monitoring and alerts to catch this earlier next time</summary>
+<summary>23. A message queue's depth is growing rapidly and consumer lag is increasing — walk through how you'd diagnose whether this is a backpressure problem (consumers can't keep up) vs a traffic spike (producers sending more than normal), what immediate load shedding steps you'd take to prevent the queue from overwhelming downstream services, and how you'd set up monitoring and alerts to catch this earlier next time</summary>
 
 <!-- Answer will be added later -->
 
@@ -187,21 +195,21 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>23. Tell me about a time you had to scale a system to handle significantly more load than it was designed for — what was the trigger, what scaling approach did you choose (horizontal, vertical, architectural changes), what unexpected problems did you hit during the scaling process, and what would you do differently?</summary>
+<summary>24. Tell me about a time you had to scale a system to handle significantly more load than it was designed for — what was the trigger, what scaling approach did you choose (horizontal, vertical, architectural changes), what unexpected problems did you hit during the scaling process, and what would you do differently?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>24. Describe a time you debugged a cascading failure in a distributed system — what were the symptoms, how did you trace the root cause across services, what was the fix, and what resilience patterns did you put in place afterward to prevent recurrence?</summary>
+<summary>25. Describe a time you debugged a cascading failure in a distributed system — what were the symptoms, how did you trace the root cause across services, what was the fix, and what resilience patterns did you put in place afterward to prevent recurrence?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>25. Tell me about a time you implemented graceful degradation for a production service — what dependencies were involved, how did you decide what to degrade and in what order, and how did the degradation strategy perform when it was actually needed?</summary>
+<summary>26. Tell me about a time you implemented graceful degradation for a production service — what dependencies were involved, how did you decide what to degrade and in what order, and how did the degradation strategy perform when it was actually needed?</summary>
 
 <!-- Answer framework will be added later -->
 

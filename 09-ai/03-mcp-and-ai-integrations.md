@@ -1,6 +1,6 @@
 # MCP & AI Integrations
 
-> **20 questions** — 13 theory, 4 practical, 3 experience
+> **22 questions** — 14 theory, 5 practical, 3 experience
 
 - MCP core primitives: servers, clients, resources, tools, prompts
 - MCP transport layer: stdio vs HTTP+SSE — tradeoffs and security
@@ -8,9 +8,11 @@
 - MCP server authentication and authorization patterns
 - Building MCP servers in TypeScript with the MCP SDK
 - Testing and debugging MCP servers: MCP Inspector, integration tests
+- MCP deployment: diagnosing transport, auth, and timeout issues
 - Function calling in practice: tool-use loop lifecycle, handling tool call results, error propagation, and timeout management in backend services
 - AI agents vs simple API calls: ReAct, plan-and-execute architectures
 - Tool use vs RAG: when to give LLMs live access to systems vs pre-indexed knowledge, combining both, failure modes of each
+- LLM API backend patterns: streaming responses to clients via SSE/WebSockets, error handling, rate limit management, retry with backoff
 - Architectural patterns for AI features: sync, async queues, streaming, background enrichment
 - Structured output from LLMs: JSON mode, tool-use-as-schema, validation
 - Multi-turn conversation management: message history, context window limits, token budgets
@@ -82,35 +84,42 @@
 </details>
 
 <details>
-<summary>9. How do you get structured output from an LLM reliably — what are the approaches (JSON mode, tool-use-as-schema, output parsers), why is raw text extraction fragile, and how do you validate and handle cases where the model returns output that doesn't match your expected schema?</summary>
+<summary>9. What backend patterns handle LLM API calls in production — how do you stream responses to clients via SSE or WebSockets instead of waiting for the full response, how do you handle LLM provider errors gracefully (timeouts, 429s, 500s), and what does a robust retry-with-backoff strategy look like for LLM APIs that have unpredictable latency?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>10. How do you manage multi-turn conversations with an LLM in a backend service — how is message history stored and passed to the API, what happens when the conversation exceeds the context window limit, what strategies exist for truncation and summarization, and how do you set token budgets to balance quality vs cost?</summary>
+<summary>10. How do you get structured output from an LLM reliably — what are the approaches (JSON mode, tool-use-as-schema, output parsers), why is raw text extraction fragile, and how do you validate and handle cases where the model returns output that doesn't match your expected schema?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>11. What are the safety risks when an LLM can call tools — how do you validate tool call arguments before execution, what causes infinite agent loops, and what guardrails prevent runaway agent behavior in production?</summary>
+<summary>11. How do you manage multi-turn conversations with an LLM in a backend service — how is message history stored and passed to the API, what happens when the conversation exceeds the context window limit, what strategies exist for truncation and summarization, and how do you set token budgets to balance quality vs cost?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>12. How can prompt injection through tool results compromise an agent's behavior — what does this attack look like, why is it different from direct prompt injection, and why is sandboxing tool execution important even when you trust the tool's source code?</summary>
+<summary>12. What are the safety risks when an LLM can call tools — how do you validate tool call arguments before execution, what causes infinite agent loops, and what guardrails prevent runaway agent behavior in production?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>13. How do you add observability to LLM-powered features — what should you log for each LLM call (tokens, latency, model, prompt version), how do you trace a multi-step agent that makes several tool calls, what metrics and alerts matter for catching regressions in cost, latency, or output quality?</summary>
+<summary>13. How can prompt injection through tool results compromise an agent's behavior — what does this attack look like, why is it different from direct prompt injection, and why is sandboxing tool execution important even when you trust the tool's source code?</summary>
+
+<!-- Answer will be added later -->
+
+</details>
+
+<details>
+<summary>14. How do you add observability to LLM-powered features — what should you log for each LLM call (tokens, latency, model, prompt version), how do you trace a multi-step agent that makes several tool calls, what metrics and alerts matter for catching regressions in cost, latency, or output quality?</summary>
 
 <!-- Answer will be added later -->
 
@@ -119,14 +128,21 @@
 ## Practical — MCP Implementation
 
 <details>
-<summary>14. Build an MCP server in TypeScript using the MCP SDK that exposes at least two tools and one resource — show the project setup, how you define tool schemas, implement tool handlers, register a resource, and configure the transport. Explain the key decisions in the code and what happens if a tool handler throws an error.</summary>
+<summary>15. Build an MCP server in TypeScript using the MCP SDK that exposes at least two tools and one resource — show the project setup, how you define tool schemas, implement tool handlers, register a resource, and configure the transport. Explain the key decisions in the code and what happens if a tool handler throws an error.</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>15. How do you test and debug an MCP server — show how to use MCP Inspector to manually test tool calls and inspect request/response payloads, then write an integration test that programmatically connects to the server, calls a tool, and asserts on the result. What are the common issues MCP Inspector helps catch that unit tests miss?</summary>
+<summary>16. How do you test and debug an MCP server — show how to use MCP Inspector to manually test tool calls and inspect request/response payloads, then write an integration test that programmatically connects to the server, calls a tool, and asserts on the result. What are the common issues MCP Inspector helps catch that unit tests miss?</summary>
+
+<!-- Answer will be added later -->
+
+</details>
+
+<details>
+<summary>17. An MCP server works locally over stdio but fails when deployed over HTTP+SSE — walk through the systematic debugging process: diagnosing transport issues (SSE connection drops, CORS, proxy buffering), auth failures (token not forwarded, expired credentials), and timeout problems (long-running tool calls exceeding gateway timeouts). What are the exact steps and tools you use at each stage?</summary>
 
 <!-- Answer will be added later -->
 
@@ -135,14 +151,14 @@
 ## Practical — AI Backend Integration
 
 <details>
-<summary>16. Implement structured data extraction from unstructured text using an LLM — show the TypeScript code that sends a prompt with a schema definition (using tool-use-as-schema or JSON mode), parses the response, validates it against the expected shape (e.g., with Zod), and handles validation failures with a retry or fallback. What happens in production if you skip the validation step?</summary>
+<summary>18. Implement structured data extraction from unstructured text using an LLM — show the TypeScript code that sends a prompt with a schema definition (using tool-use-as-schema or JSON mode), parses the response, validates it against the expected shape (e.g., with Zod), and handles validation failures with a retry or fallback. What happens in production if you skip the validation step?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>17. Add observability to an LLM-powered endpoint — show how you instrument it to log prompt version, token usage, latency, and model, then demonstrate how you trace a multi-step agent flow where one LLM call triggers tool calls that trigger further LLM calls. What makes tracing agent flows harder than tracing traditional request chains?</summary>
+<summary>19. Add observability to an LLM-powered endpoint — show how you instrument it to log prompt version, token usage, latency, and model, then demonstrate how you trace a multi-step agent flow where one LLM call triggers tool calls that trigger further LLM calls. What makes tracing agent flows harder than tracing traditional request chains?</summary>
 
 <!-- Answer will be added later -->
 
@@ -155,21 +171,21 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>18. Tell me about a time you integrated an LLM into a production backend service — what was the feature, what architectural pattern did you choose (sync, async, streaming), what surprised you about LLM behavior in production, and what would you do differently?</summary>
+<summary>20. Tell me about a time you integrated an LLM into a production backend service — what was the feature, what architectural pattern did you choose (sync, async, streaming), what surprised you about LLM behavior in production, and what would you do differently?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>19. Describe a time you had to debug a failing AI agent or tool-use chain — what were the symptoms, how did you trace through the multi-step execution to find the root cause, and what guardrails did you add afterward to prevent similar failures?</summary>
+<summary>21. Describe a time you had to debug a failing AI agent or tool-use chain — what were the symptoms, how did you trace through the multi-step execution to find the root cause, and what guardrails did you add afterward to prevent similar failures?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>20. Tell me about a time you had to manage cost or latency for an AI-powered feature — what was the situation, what tradeoffs did you evaluate (model size, caching, batching, async processing), and what measurable impact did your changes have?</summary>
+<summary>22. Tell me about a time you had to manage cost or latency for an AI-powered feature — what was the situation, what tradeoffs did you evaluate (model size, caching, batching, async processing), and what measurable impact did your changes have?</summary>
 
 <!-- Answer framework will be added later -->
 

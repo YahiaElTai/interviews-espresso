@@ -8,7 +8,7 @@
 - Remote backends (GCS/S3): configuration, state locking, race conditions, and force-unlock
 - State splitting: monolithic vs per-service/per-environment state, sharing data between states
 - HCL: count vs for_each, dynamic blocks, locals, variables with validation, outputs, data sources
-- Lifecycle meta-arguments: create_before_destroy, prevent_destroy, ignore_changes, replace_triggered_by
+- Lifecycle meta-arguments: create_before_destroy, prevent_destroy
 - Dependency management: implicit graph, depends_on for hidden dependencies, -target for partial operations and its risks
 - Modules: reusable design, input/output contracts, versioning, when NOT to create a module
 - Repo structure for multiple environments: workspaces vs directories vs Terragrunt

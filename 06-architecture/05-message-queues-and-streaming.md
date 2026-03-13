@@ -9,6 +9,7 @@
 - Kafka architecture: append-only log, partitioning, partition key strategy (per-entity, per-tenant, hot partitions), ordering guarantees, rebalancing
 - Ordering vs parallelism: why you can't have both easily, partition-level ordering, and when to relax ordering
 - Consumer groups: Kafka partition assignment, Pub/Sub subscriptions, SQS visibility timeout, failure modes
+- Offset management and replay: committed offsets, offset reset policies (earliest/latest), rewinding consumers, compacted topics for latest-state lookups
 - Idempotent message processing: deduplication IDs, idempotent writes, transactional outbox pattern
 - Backpressure and flow control: consumer lag, prefetch limits, pull vs push consumers, visibility timeout tuning
 - Dead letter queues: routing failed messages, triage strategies, replay and reprocessing
@@ -77,7 +78,7 @@
 </details>
 
 <details>
-<summary>9. How do GCP Pub/Sub subscriptions and AWS SQS visibility timeout each implement competing consumer behavior compared to Kafka's partition-based consumer groups — what failure modes are unique to each (ack deadline expiry vs visibility timeout race conditions vs rebalancing storms), and how does each handle a slow or stuck consumer?</summary>
+<summary>9. How does Kafka's offset management work and why is it central to replay capability — what are committed offsets, how do offset reset policies (earliest vs latest) affect consumer behavior on restart, when would you rewind a consumer group to reprocess messages, and what are compacted topics and how do they provide latest-state lookups instead of full event history?</summary>
 
 <!-- Answer will be added later -->
 

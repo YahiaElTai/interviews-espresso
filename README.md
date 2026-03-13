@@ -1,8 +1,8 @@
 # Interview Espresso
 
-The essential, concentrated version of [interviews](https://github.com/YahiaElTai/interviews) — same depth, narrower scope. Built for "I have an interview next week" moments.
+A smaller, focused version of [interviews](https://github.com/YahiaElTai/interviews) — same depth, narrower scope. Used the same way as the main repo: interview prep, day-to-day knowledge base, and quick reference for brushing up on topics.
 
-The main repo is the comprehensive gold standard (49 files, 20-40 questions each). This repo applies the 80/20 principle: ~70-80% of the most important concepts per topic, with full-quality answers. We sacrifice breadth, not depth.
+The main repo is the comprehensive gold standard (49 files, 20-40 questions each). This repo applies the 80/20 principle: ~60-70% of the most important concepts per topic, with full-quality answers. Every question earns its place by being relevant to senior backend interviews, foundational for day-to-day work, or commonly asked by real companies. We sacrifice breadth, not depth.
 
 ## The 5 Pillars
 

@@ -1,6 +1,6 @@
 # Kubernetes
 
-> **26 questions** — 10 theory, 12 practical, 4 experience
+> **28 questions** — 10 theory, 14 practical, 4 experience
 
 - Core primitives: Pods, Deployments, Services, Namespaces — and why K8s separates them
 - Control plane architecture: API server, etcd, scheduler, controller manager — failure modes
@@ -21,6 +21,8 @@
 - Ingress: TLS termination with cert-manager, ACME flow, rate limiting
 - Helm: chart architecture, values overrides, hooks for migrations, Helm vs Kustomize
 - Production debugging: CrashLoopBackOff, Pending pods, OOMKilled, service-to-service networking failures, ephemeral containers (kubectl debug)
+- Scheduling: taints, tolerations, node affinity, pod priorities, preemption
+- Network Policies and microsegmentation (allow/deny traffic between services)
 
 ---
 
@@ -98,7 +100,9 @@
 
 </details>
 
-## Practical — Single Resource Configuration<details>
+## Practical — Single Resource Configuration
+
+<details>
 <summary>11. Configure a Deployment that reads configuration from both a ConfigMap (as environment variables) and a Secret (as a mounted volume) — show the YAML for all three resources, explain when you'd choose env vars vs volume mounts, how you handle multiple environments, and what happens if the ConfigMap changes while pods are running</summary>
 
 <!-- Answer will be added later -->
@@ -124,22 +128,40 @@
 
 <!-- Answer will be added later -->
 
-</details>## Practical — Multi-Resource Composition
+</details>
 
 <details>
-<summary>15. Set up a HorizontalPodAutoscaler that scales on both CPU utilization and a custom metric (e.g., queue depth) — show the YAML, explain how HPA calculates the desired replica count using the scaling formula, and what happens when multiple metrics disagree on the target replica count</summary>
+<summary>15. Configure pod scheduling using taints, tolerations, and node affinity — show the YAML for a scenario where certain pods must run on GPU nodes while others must avoid them, explain the difference between required and preferred affinity rules, and how pod priorities and preemption work when the cluster is resource-constrained</summary>
 
 <!-- Answer will be added later -->
 
-</details><details>
-<summary>16. Configure a zero-downtime deployment — show the Deployment spec with rolling update strategy (maxUnavailable/maxSurge), a PodDisruptionBudget, and a pod spec with a preStop hook and proper connection draining. Explain why you need each piece, how to set terminationGracePeriodSeconds correctly, and what happens to in-flight requests without these configurations</summary>
+</details>
+
+## Practical — Multi-Resource Composition
+
+<details>
+<summary>16. Set up a HorizontalPodAutoscaler that scales on both CPU utilization and a custom metric (e.g., queue depth) — show the YAML, explain how HPA calculates the desired replica count using the scaling formula, and what happens when multiple metrics disagree on the target replica count</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>17. Set up an Ingress with TLS termination using cert-manager — show the Ingress YAML, the Certificate and Issuer resources, explain the ACME flow (how cert-manager obtains and renews a Let's Encrypt certificate via HTTP-01 or DNS-01 challenge), and how to add rate limiting via Ingress annotations.</summary>
+<summary>17. Configure a zero-downtime deployment — show the Deployment spec with rolling update strategy (maxUnavailable/maxSurge), a PodDisruptionBudget, and a pod spec with a preStop hook and proper connection draining. Explain why you need each piece, how to set terminationGracePeriodSeconds correctly, and what happens to in-flight requests without these configurations</summary>
+
+<!-- Answer will be added later -->
+
+</details>
+
+<details>
+<summary>18. Set up an Ingress with TLS termination using cert-manager — show the Ingress YAML, the Certificate and Issuer resources, explain the ACME flow (how cert-manager obtains and renews a Let's Encrypt certificate via HTTP-01 or DNS-01 challenge), and how to add rate limiting via Ingress annotations.</summary>
+
+<!-- Answer will be added later -->
+
+</details>
+
+<details>
+<summary>19. Why does Kubernetes default to allow-all traffic between pods and what does that mean for security? Write a default-deny NetworkPolicy and then add rules that allow specific traffic paths (e.g., frontend → API on port 3000, API → database on port 5432) — show the YAML and explain the common mistakes teams make when first adopting Network Policies</summary>
 
 <!-- Answer will be added later -->
 
@@ -148,35 +170,37 @@
 ## Practical — Helm & Tooling
 
 <details>
-<summary>18. Walk through the structure of a Helm chart — show the directory layout, explain what Chart.yaml, values.yaml, and templates/ contain, demonstrate how values overrides work (--set vs -f values files), and how you manage different configurations across environments (dev, staging, production)</summary>
+<summary>20. Walk through the structure of a Helm chart — show the directory layout, explain what Chart.yaml, values.yaml, and templates/ contain, demonstrate how values overrides work (--set vs -f values files), and how you manage different configurations across environments (dev, staging, production)</summary>
 
 <!-- Answer will be added later -->
 
-</details>## Practical — Debugging & Troubleshooting
+</details>
+
+## Practical — Debugging & Troubleshooting
 
 <details>
-<summary>19. A pod is stuck in CrashLoopBackOff — walk through the exact kubectl commands to diagnose the root cause step by step: checking pod status, reading events, pulling logs from the previous crashed container, interpreting exit codes, and using ephemeral containers (kubectl debug) when the container has no shell or debugging tools. What are the most common causes and how do you fix each?</summary>
+<summary>21. A pod is stuck in CrashLoopBackOff — walk through the exact kubectl commands to diagnose the root cause step by step: checking pod status, reading events, pulling logs from the previous crashed container, interpreting exit codes, and using ephemeral containers (kubectl debug) when the container has no shell or debugging tools. What are the most common causes and how do you fix each?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>20. A pod has been Pending for 10 minutes and won't schedule — walk through the exact steps to diagnose why: checking scheduler events, identifying resource constraints vs node selector mismatches vs taint issues vs PVC binding failures. What are the common fixes for each cause?</summary>
+<summary>22. A pod has been Pending for 10 minutes and won't schedule — walk through the exact steps to diagnose why: checking scheduler events, identifying resource constraints vs node selector mismatches vs taint issues vs PVC binding failures. What are the common fixes for each cause?</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>21. A container keeps getting OOMKilled — walk through how you detect this (pod describe, events, exit code 137), how you determine whether the memory limit is too low or the application has a genuine memory leak, and what the fix looks like for each case</summary>
+<summary>23. A container keeps getting OOMKilled — walk through how you detect this (pod describe, events, exit code 137), how you determine whether the memory limit is too low or the application has a genuine memory leak, and what the fix looks like for each case</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>22. Service A cannot reach Service B even though both pods are running — walk through the systematic debugging process: checking DNS resolution from within a pod, verifying service selectors match pod labels, inspecting endpoints, testing connectivity with curl/wget, and checking whether Network Policies are blocking traffic. Show the exact commands at each step</summary>
+<summary>24. Service A cannot reach Service B even though both pods are running — walk through the systematic debugging process: checking DNS resolution from within a pod, verifying service selectors match pod labels, inspecting endpoints, testing connectivity with curl/wget, and checking whether Network Policies are blocking traffic. Show the exact commands at each step</summary>
 
 <!-- Answer will be added later -->
 
@@ -189,28 +213,28 @@
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>23. Tell me about a time you migrated a workload to Kubernetes or set up Kubernetes infrastructure from scratch — what drove the decision, what challenges did you face during the migration, and what would you do differently?</summary>
+<summary>25. Tell me about a time you migrated a workload to Kubernetes or set up Kubernetes infrastructure from scratch — what drove the decision, what challenges did you face during the migration, and what would you do differently?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>24. Describe a time you debugged a critical Kubernetes issue in production — what were the symptoms, how did you diagnose it, and what was the root cause?</summary>
+<summary>26. Describe a time you debugged a critical Kubernetes issue in production — what were the symptoms, how did you diagnose it, and what was the root cause?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>25. Tell me about a time you had to optimize Kubernetes resource usage or cost — what was the situation, what changes did you make (right-sizing, autoscaling, spot instances), and what was the measurable impact?</summary>
+<summary>27. Tell me about a time you had to optimize Kubernetes resource usage or cost — what was the situation, what changes did you make (right-sizing, autoscaling, spot instances), and what was the measurable impact?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>26. Describe a time you designed the deployment strategy or CI/CD pipeline for a Kubernetes-based application — what decisions did you make about rollout strategy, environment promotion, and developer experience?</summary>
+<summary>28. Describe a time you designed the deployment strategy or CI/CD pipeline for a Kubernetes-based application — what decisions did you make about rollout strategy, environment promotion, and developer experience?</summary>
 
 <!-- Answer framework will be added later -->
 

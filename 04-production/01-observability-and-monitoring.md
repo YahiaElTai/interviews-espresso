@@ -1,6 +1,6 @@
 # Observability & Monitoring
 
-> **25 questions** — 12 theory, 10 practical, 3 experience
+> **26 questions** — 13 theory, 10 practical, 3 experience
 
 - Three pillars of observability (logs, metrics, traces) — what each answers, why you need all three, how distributed systems made traditional monitoring insufficient
 - Structured logging (JSON format) — log levels, contextual fields, redaction of sensitive data, log injection prevention, child loggers, pino as a Node.js example
@@ -85,17 +85,28 @@
 
 <!-- Answer will be added later -->
 
-</details>## Alerting & SLOs — Concepts
+</details>
 
 <details>
-<summary>10. What makes an alert actionable vs noisy — why should alerts be based on symptoms (user-facing impact) rather than causes (CPU spike), how do severity tiers work in practice, and what patterns lead to alert fatigue where the on-call engineer starts ignoring pages?</summary>
+<summary>10. Why can't you trace 100% of requests in production, what are the tradeoffs between head-based sampling and tail-based sampling, and how do you choose a sampling strategy that captures enough data for debugging without overwhelming your tracing backend with cost and volume?</summary>
 
 <!-- Answer will be added later -->
 
-</details>## Error Tracking & Debugging — Concepts
+</details>
+
+## Alerting & SLOs — Concepts
 
 <details>
-<summary>11. How do you correlate metrics, traces, and logs together to debug complex production issues — what links them (trace IDs, timestamps, shared labels), why is this correlation the highest-value capability of an observability stack, and what breaks when one pillar is missing or disconnected from the others?</summary>
+<summary>11. What makes an alert actionable vs noisy — why should alerts be based on symptoms (user-facing impact) rather than causes (CPU spike), how do severity tiers work in practice, and what patterns lead to alert fatigue where the on-call engineer starts ignoring pages?</summary>
+
+<!-- Answer will be added later -->
+
+</details>
+
+## Error Tracking & Debugging — Concepts
+
+<details>
+<summary>12. How do you correlate metrics, traces, and logs together to debug complex production issues — what links them (trace IDs, timestamps, shared labels), why is this correlation the highest-value capability of an observability stack, and what breaks when one pillar is missing or disconnected from the others?</summary>
 
 <!-- Answer will be added later -->
 
@@ -104,7 +115,7 @@
 ## OpenTelemetry — Concepts
 
 <details>
-<summary>12. Why did OpenTelemetry emerge as the observability standard — what problems did fragmented vendor-specific SDKs (Jaeger client, Prometheus client, vendor agents) create, how does the OTel architecture (SDK + Collector) solve vendor lock-in, and what does "vendor-neutral instrumentation" actually mean in practice for a team choosing an observability backend?</summary>
+<summary>13. Why did OpenTelemetry emerge as the observability standard — what problems did fragmented vendor-specific SDKs (Jaeger client, Prometheus client, vendor agents) create, how does the OTel architecture (SDK + Collector) solve vendor lock-in, and what does "vendor-neutral instrumentation" actually mean in practice for a team choosing an observability backend?</summary>
 
 <!-- Answer will be added later -->
 
@@ -113,35 +124,35 @@
 ## Practical — Instrumentation & Configuration
 
 <details>
-<summary>13. Configure structured logging with pino in a Node.js service — show the setup with appropriate log levels, sensitive field redaction (passwords, tokens), log injection prevention (how attackers exploit unsanitized user input in log fields to forge entries or break log parsing), child loggers for request-scoped context, and explain why each configuration choice matters for production use</summary>
+<summary>14. Configure structured logging with pino in a Node.js service — show the setup with appropriate log levels, sensitive field redaction (passwords, tokens), log injection prevention (how attackers exploit unsanitized user input in log fields to forge entries or break log parsing), child loggers for request-scoped context, and explain why each configuration choice matters for production use</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>14. Instrument a Node.js service with OpenTelemetry — show the setup for auto-instrumentation (HTTP, database calls), add a manual span for a custom business operation, configure the collector pipeline (exporter, processor, batching), and explain what each piece does and what you lose without it</summary>
+<summary>15. Instrument a Node.js service with OpenTelemetry — show the setup for auto-instrumentation (HTTP, database calls), add a manual span for a custom business operation, configure the collector pipeline (exporter, processor, batching), and explain what each piece does and what you lose without it</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>15. Implement correlation ID middleware for a Node.js HTTP service — show how to generate an ID for incoming requests (or extract one from upstream headers), propagate it through async context so all log lines include it, pass it to downstream HTTP/gRPC calls, and explain what breaks in cross-service debugging without this</summary>
+<summary>16. Implement correlation ID middleware for a Node.js HTTP service — show how to generate an ID for incoming requests (or extract one from upstream headers), propagate it through async context so all log lines include it, pass it to downstream HTTP/gRPC calls, and explain what breaks in cross-service debugging without this</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>16. Instrument a Node.js API with custom metrics — create a request duration histogram, an active connections gauge, and a requests-processed counter with appropriate labels. Show the code, explain the label choices, and demonstrate what high-cardinality labels (e.g., user ID as a label) would do to your metrics backend</summary>
+<summary>17. Instrument a Node.js API with custom metrics — create a request duration histogram, an active connections gauge, and a requests-processed counter with appropriate labels. Show the code, explain the label choices, and demonstrate what high-cardinality labels (e.g., user ID as a label) would do to your metrics backend</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>17. Implement /health and /ready endpoints for a Node.js service that checks downstream dependencies (database, cache, external API) — show the code, explain the difference between liveness and readiness semantics, show the Kubernetes probe YAML that integrates with these endpoints, and explain what happens when readiness checks are too aggressive or too lenient</summary>
+<summary>18. Implement /health and /ready endpoints for a Node.js service that checks downstream dependencies (database, cache, external API) — show the code, explain the difference between liveness and readiness semantics, show the Kubernetes probe YAML that integrates with these endpoints, and explain what happens when readiness checks are too aggressive or too lenient</summary>
 
 <!-- Answer will be added later -->
 
@@ -150,14 +161,14 @@
 ## Practical — Production Operations
 
 <details>
-<summary>18. Define concrete SLIs for a REST API service (availability, latency, correctness), set SLO targets with specific numbers, calculate the monthly error budget, and show how burn-rate alert thresholds are derived — walk through the math and explain how the team should respond when the error budget is nearly exhausted</summary>
+<summary>19. Define concrete SLIs for a REST API service (availability, latency, correctness), set SLO targets with specific numbers, calculate the monthly error budget, and show how burn-rate alert thresholds are derived — walk through the math and explain how the team should respond when the error budget is nearly exhausted</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>19. Design an alerting strategy for a microservices application — show example alert rules that follow symptom-based alerting principles, define severity tiers (page vs ticket vs dashboard), set up routing and escalation, and explain how you'd evaluate whether the alerting is working well after a month in production</summary>
+<summary>20. Design an alerting strategy for a microservices application — show example alert rules that follow symptom-based alerting principles, define severity tiers (page vs ticket vs dashboard), set up routing and escalation, and explain how you'd evaluate whether the alerting is working well after a month in production</summary>
 
 <!-- Answer will be added later -->
 
@@ -166,46 +177,48 @@
 ## Practical — Debugging & Troubleshooting
 
 <details>
-<summary>20. An API endpoint's p99 latency spiked from 200ms to 2s starting 30 minutes ago — walk through step by step how you use metrics to identify which endpoint and when, traces to find the slow span, and logs to find the root cause. Show the specific queries and reasoning at each step</summary>
+<summary>21. An API endpoint's p99 latency spiked from 200ms to 2s starting 30 minutes ago — walk through step by step how you use metrics to identify which endpoint and when, traces to find the slow span, and logs to find the root cause. Show the specific queries and reasoning at each step</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>21. A downstream service is silently failing — it returns 200 OK but the response data is wrong, causing subtle bugs for users. Your error rates look normal and no alerts fired. Walk through how you'd detect and diagnose this class of problem — show the specific metric queries, trace filters, or log searches you'd use at each step, and what instrumentation you'd add to prevent it from being silent next time</summary>
+<summary>22. A downstream service is silently failing — it returns 200 OK but the response data is wrong, causing subtle bugs for users. Your error rates look normal and no alerts fired. Walk through how you'd detect and diagnose this class of problem — show the specific metric queries, trace filters, or log searches you'd use at each step, and what instrumentation you'd add to prevent it from being silent next time</summary>
 
 <!-- Answer will be added later -->
 
 </details>
 
 <details>
-<summary>22. Intermittent 5xx errors are affecting approximately 2% of requests to a specific endpoint, but the error only happens under certain conditions you haven't identified yet — walk through how you use distributed traces and correlation IDs to find the common pattern across failing requests and isolate the root cause</summary>
+<summary>23. Intermittent 5xx errors are affecting approximately 2% of requests to a specific endpoint, but the error only happens under certain conditions you haven't identified yet — walk through how you use distributed traces and correlation IDs to find the common pattern across failing requests and isolate the root cause</summary>
 
 <!-- Answer will be added later -->
 
-</details>---
+</details>
+
+---
 
 ## Experience-Based Questions
 
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>23. Tell me about a time you set up or significantly improved observability for a production system — what was the state before, what did you implement, and how did it change the team's ability to detect and respond to issues?</summary>
+<summary>24. Tell me about a time you set up or significantly improved observability for a production system — what was the state before, what did you implement, and how did it change the team's ability to detect and respond to issues?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>24. Describe a time you used observability tooling (metrics, traces, logs) to diagnose a complex production incident that would have been very difficult to solve without it — what were the symptoms, how did you correlate signals, and what was the root cause?</summary>
+<summary>25. Describe a time you used observability tooling (metrics, traces, logs) to diagnose a complex production incident that would have been very difficult to solve without it — what were the symptoms, how did you correlate signals, and what was the root cause?</summary>
 
 <!-- Answer framework will be added later -->
 
 </details>
 
 <details>
-<summary>25. Tell me about a time you dealt with alert fatigue or redesigned an alerting strategy — what was wrong with the existing alerts, what changes did you make, and how did you measure whether the new approach was better?</summary>
+<summary>26. Tell me about a time you dealt with alert fatigue or redesigned an alerting strategy — what was wrong with the existing alerts, what changes did you make, and how did you measure whether the new approach was better?</summary>
 
 <!-- Answer framework will be added later -->
 
