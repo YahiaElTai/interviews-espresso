@@ -33,7 +33,8 @@ This repo uses dedicated **agents** (`.claude/agents/`) to execute **skills** (`
 
 | Agent | What it does |
 |---|---|
-| `distill` | Surgically trims a topic file to essential 60-70% scope — deletes niche summary bullets and their corresponding questions. |
+| `distill-light` | Light trim (~10-15% cut) for core-stack topics (Node.js, TypeScript) — only removes tooling trivia and topics belonging to other interview rounds. Preserves all senior-level depth. |
+| `distill` | Standard trim (~30-40% cut) for non-core topics — deletes niche summary bullets and their corresponding questions. |
 | `review-summary` | Reviews summary bullets for completeness. Ensures important concepts are covered without going too niche. |
 | `fix-summary` | Applies coverage report fixes to a topic file's summary bullets, then deletes the report. |
 | `generate-questions` | Generates 20-40 interview questions from a file's summary bullets. |
@@ -44,6 +45,8 @@ This repo uses dedicated **agents** (`.claude/agents/`) to execute **skills** (`
 | `review-answers` | Reviews answers for quality, compliance with the 5 Pillars. Outputs an answer review report. Uses context7 for accuracy checks. |
 | `fix-answers` | Applies answer review report fixes to a topic file's answers, then deletes the report. Uses context7 for accuracy verification. |
 
-**Espresso workflow**: Distill → Generate answers → Review answers → Fix answers.
+**Distillation strategy**: Use `distill-light` for `01-core-stack/` topics (primary tools — interviewers go deep here). Use `distill` for everything else.
+
+**Espresso workflow**: Distill (light or standard) → Generate answers → Review answers → Fix answers.
 
 **Full workflow** (if needed): Review summary → Fix summary → Generate questions → Review questions → Fix questions → Apply checklist → Generate answers → Review answers → Fix answers.

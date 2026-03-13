@@ -1,11 +1,11 @@
 ---
-name: distill
-description: Trims a topic file to its essential 60-70% scope by surgically deleting niche summary bullets and their corresponding questions. Used to create the interview-espresso version of a file.
+name: distill-light
+description: Light distillation for core-stack topics — cuts only the truly tangential 10-15% while preserving senior-level depth. For primary tools (Node.js, TypeScript) where deep interview probing is expected.
 argument-hint: <file-path>
 disable-model-invocation: false
 ---
 
-You are distilling a comprehensive interview prep file down to its essential core. Your job is to apply the 80/20 principle: keep the essential 60-70% of summary bullets that cover the most important, most commonly asked, and most foundational knowledge — and cut the rest. Then drop any questions whose topics were removed.
+You are performing a **light distillation** on a core-stack interview prep file. Unlike standard distillation (which cuts 30-40%), you cut only the truly tangential 10-15% — tooling trivia, easily-Googled facts, and topics that belong in a different interview round entirely.
 
 **You only DELETE via surgical edits. You never add, rewrite, or modify content.** Your output is a strict subset of the input.
 
@@ -15,17 +15,18 @@ The file to distill: `$ARGUMENTS`
 
 This file lives in the current repo. Read it from the current working directory.
 
-## The Distillation Principle
+## The Light Distillation Principle
 
-The main interviews repo is the comprehensive gold standard — 20-40 questions per topic covering everything a senior engineer should know. The espresso repo is for "I have an interview next week" — it should cover the essential must-know concepts with the same answer quality but narrower scope.
+Core-stack topics are the candidate's primary tools. Interviewers **will** go deep here. Senior-level depth is exactly where a candidate differentiates — cutting it defeats the purpose.
 
-**Same depth, narrower scope.** You're not making answers shorter or simpler. You're deciding which topics to cover.
+**Keep ~85-90% of the content. Only cut what's genuinely tangential.**
 
 ## Process
 
 ### Step 1: Read and Understand the File
 
 Read the full file. Identify:
+
 - The summary bullet points (between the title and the `---` separator)
 - The stats line (e.g., `> **37 questions** — 18 theory, 19 practical`)
 - All knowledge questions (in `<details>` blocks)
@@ -33,32 +34,27 @@ Read the full file. Identify:
 
 ### Step 2: Classify Each Summary Bullet
 
-For each summary bullet, classify it as **KEEP** or **CUT** using these criteria:
+For each summary bullet, classify it as **KEEP** or **CUT**:
 
-**KEEP if ANY of these are true:**
-- It's a foundational concept that other topics build on (e.g., "event loop phases" for Node.js)
-- It's commonly asked in interviews for this topic (the "greatest hits")
-- It's essential for day-to-day production work
-- Removing it would leave a visible gap — someone studying this file would notice it's missing
-- It's a prerequisite for understanding other kept bullets
+**CUT only if ALL of these are true:**
 
-**CUT if ALL of these are true:**
-- It's niche, specialist-level, or rarely asked in interviews
-- It's an advanced optimization or edge case that most engineers don't encounter
-- It's "nice to know" but not "must know"
-- The file still makes sense without it — no gap is created
+- Removing it creates zero gap — no other kept topic depends on it
+- It's either tooling/config trivia that engineers look up (package managers, version managers, build tool comparisons) or belongs in a different interview round entirely (e.g., dedicated security round). Note: configuration that requires reasoning about tradeoffs and how settings interact (e.g., production tsconfig choices) is NOT trivia — it's a synthesis topic. Only cut config that's pure reference material.
+- It tests breadth of awareness, not depth of understanding
 
-**Aim for cutting ~30-40% of bullets.** If a topic is already lean (10-12 bullets), you might only cut 3-4. If it's dense (18-22 bullets), you might cut 6-8. These percentages are guidelines, not goals — don't force a number if it means cutting essential content or keeping filler. Let the topic dictate the right cut depth.
+**KEEP everything else.** The bar is: if a senior candidate saying "I don't know" to this topic would be a red flag, it stays. Senior-level depth is the whole point — don't cut it just because it's advanced.
+
+**Aim for cutting only 2-4 bullets.** If you can't find 2 genuinely tangential bullets, that's fine — cut fewer. Never force cuts to hit a number.
 
 ### Step 3: Plan the Cuts
 
 Before making any changes, output your plan:
 
 ```
-# Distill Plan: [File Name]
+# Distill-Light Plan: [File Name]
 
 ## Bullets to CUT (N of M total)
-- [bullet text] — [why: niche / rarely asked / advanced optimization / nice-to-know]
+- [bullet text] — [why: tooling trivia / different round / easily Googled]
 ...
 
 ## Questions to DROP
@@ -66,7 +62,7 @@ Before making any changes, output your plan:
 ...
 
 ## Experience Questions to DROP (if any)
-- Q[N]: "[question summary]" — [why: too advanced / maps to cut content]
+- Q[N]: "[question summary]" — [why]
 Or: None — all experience questions are essential
 
 ## Expected Result
@@ -82,20 +78,19 @@ Only list what you're cutting — keeps are implicit (everything else). Don't wa
 ### Step 4: Map Questions to Cut Bullets
 
 For each cut bullet, identify ALL questions that primarily test knowledge from that bullet. A question should be dropped if:
+
 - Its core topic was in a cut bullet
 - It can't be answered without knowledge from a cut bullet
 - It's primarily about a concept that was cut
 
 A question should be KEPT even if it touches a cut bullet, as long as:
+
 - Its primary topic is in a kept bullet
 - It can be fully answered using only knowledge from kept bullets
 
 ### Step 5: Handle Experience-Based Questions
 
-Review experience-based questions with the same principle:
-- Keep all that relate to kept topics
-- Drop only if the question is clearly about a cut topic or is too advanced/niche
-- When in doubt, keep it — experience questions are broadly valuable
+Keep all experience questions unless one is exclusively about a cut topic. When in doubt, keep it.
 
 ### Step 6: Apply Surgical Edits
 
@@ -118,6 +113,7 @@ Edit the file in place using surgical delete operations. Do NOT rewrite the enti
 ## Quality Checks
 
 After all edits, verify:
+
 - [ ] Every kept summary bullet has at least one corresponding question
 - [ ] No kept question references a concept only covered by a cut bullet
 - [ ] Question numbering is sequential with no gaps
@@ -132,14 +128,13 @@ After all edits, verify:
 - **NEVER modify answer text** — if a question has an answer, keep it exactly as-is.
 - **NEVER modify summary bullet text** — keep exact wording of kept bullets.
 - **Preserve formatting exactly** — `<details>`, `<summary>`, markdown headers, separators.
-- **The behavioral file (`10-behavioral/`)** — may not need much trimming. If all questions are essential, say so and make minimal cuts.
-- **System design files (`07-system-design/`)** — trim the summary and questions, but preserve the design interview section structure.
 
 ## Report Back
 
 After writing the distilled file, return:
+
 - File path
 - Summary bullets: before → after (what was cut)
 - Knowledge questions: before → after (what was dropped)
 - Experience questions: before → after (what was dropped, if any)
-- Brief rationale for the most significant cuts
+- Brief rationale for each cut

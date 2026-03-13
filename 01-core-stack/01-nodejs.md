@@ -1,6 +1,6 @@
 # Node.js
 
-> **37 questions** — 18 theory, 19 practical
+> **35 questions** — 16 theory, 19 practical
 
 - Single-threaded event loop architecture and why Node.js chose non-blocking I/O
 - EventEmitter → Stream → HTTP/FS/Net inheritance chain
@@ -11,8 +11,6 @@
 - Worker threads vs child processes vs cluster module
 - V8 garbage collection, memory management, heap snapshots, and leak detection
 - CommonJS vs ES Modules tradeoffs and dual-package publishing
-- Package management: package.json, lockfiles, semver, peer dependencies, npm workspaces for monorepos, registry and scoped packages
-- Node.js releases: LTS cycle, version management (nvm/fnm), notable recent additions (built-in test runner, native fetch, permission model)
 - AsyncLocalStorage for request-scoped context (tracing, logging) and async_hooks fundamentals
 - HTTP frameworks: raw http module, middleware pattern (Express/Koa), plugin architecture (Fastify), schema-based validation, and performance tradeoffs
 - Graceful shutdown and process lifecycle: SIGTERM/SIGINT handling, uncaughtException vs unhandledRejection, exit codes
@@ -871,108 +869,7 @@ async function processInBatches(items: string[], batchSize = 1000) {
 </details>
 
 <details>
-<summary>16. Why do lockfiles (package-lock.json) exist alongside package.json when package.json already specifies versions — how does semver resolution work, what problems do peer dependencies solve (and what pain do they cause), how do npm workspaces help in monorepos, and what are the security implications of lockfile integrity and registry configuration?</summary>
-
-**Why lockfiles exist:**
-
-`package.json` specifies version **ranges** (`^1.2.3`, `~1.2.3`, `>=1.0.0`). When you run `npm install`, npm resolves those ranges to specific versions based on what's available in the registry *at that moment*. Without a lockfile, the same `package.json` can produce different `node_modules/` trees on different machines or at different times — leading to "works on my machine" bugs.
-
-`package-lock.json` records the exact resolved version of every package (including transitive dependencies) and their integrity hashes. `npm ci` (the CI-focused install) uses only the lockfile, ignoring `package.json` ranges — guaranteeing identical installs everywhere.
-
-**Semver resolution:**
-
-Semver format: `MAJOR.MINOR.PATCH`.
-- `^1.2.3` — allows minor + patch updates: `>=1.2.3 <2.0.0` (most common, default for `npm install`)
-- `~1.2.3` — allows patch updates only: `>=1.2.3 <1.3.0`
-- `1.2.3` — exact version, no flexibility
-
-The caret (`^`) trusts that library authors follow semver — minor versions add features without breaking, patches fix bugs. In practice, this trust is sometimes misplaced (a "minor" update breaks your code), which is exactly why lockfiles are essential.
-
-**Peer dependencies — problem and pain:**
-
-Peer dependencies declare "I need this package, but the consumer must provide it — don't install a separate copy." They solve the **singleton problem**: plugins that must share a single instance of a host package.
-
-Example: A React component library declares `react` as a peer dependency. If it bundled its own React, you'd have two React instances — hooks would break, context wouldn't propagate.
-
-**The pain:**
-- npm 7+ auto-installs peer dependencies, which can cause version conflicts if two packages need different ranges.
-- Conflicting peer dependency ranges produce `ERESOLVE` errors that are confusing and require `--legacy-peer-deps` or manual resolution.
-- Library authors must keep peer dependency ranges wide enough to be useful but narrow enough to be safe.
-
-**npm workspaces in monorepos:**
-
-Workspaces let multiple packages in a monorepo share a single `node_modules/` at the root, with symlinks for cross-package references:
-
-```json
-{
-  "workspaces": ["packages/*"]
-}
-```
-
-Benefits: shared dependencies are deduplicated (one copy of TypeScript, not five), cross-package `import` works via symlinks without publishing, and `npm run --workspaces` executes scripts across all packages.
-
-**Security implications:**
-
-- **Lockfile integrity hashes:** Each dependency in the lockfile has an `integrity` field (SHA-512 hash of the tarball). `npm ci` verifies these hashes — if a package was tampered with on the registry, the hash won't match and the install fails. Always commit lockfiles and use `npm ci` in CI.
-- **Registry configuration:** `.npmrc` can point to custom registries (e.g., Artifactory, GitHub Packages). A misconfigured `.npmrc` or a missing scope mapping could silently pull packages from the public registry instead of your private one — a vector for dependency confusion attacks.
-- **`npm audit`:** Scans your dependency tree against the GitHub Advisory Database. It catches known vulnerabilities but not zero-days or malicious packages that haven't been reported yet. It's a baseline, not a complete security strategy.
-- **Install scripts:** Packages can run arbitrary code during `npm install` via `preinstall`/`postinstall` scripts. This is the primary vector for supply chain attacks. Use `--ignore-scripts` for untrusted packages, and consider tools like `socket.dev` for deeper analysis.
-
-</details>
-
-<details>
-<summary>17. How does the Node.js release cycle work (Current vs LTS vs Maintenance), why does it matter which line you run in production, and what notable recent additions (built-in test runner, native fetch, permission model) reduce the need for third-party dependencies — how do you manage multiple Node.js versions across projects with nvm or fnm?</summary>
-
-**Release cycle:**
-
-Node.js releases a new major version every 6 months (April and October). Even-numbered versions become LTS; odd-numbered versions never do.
-
-```
-Timeline for a version (e.g., Node.js 22):
-
-April 2024     → "Current" release (6 months)
-October 2024   → Enters "Active LTS" (18 months of active support)
-April 2026     → Enters "Maintenance LTS" (12 months, security fixes only)
-April 2027     → End of life
-```
-
-| Phase | Duration | What you get |
-|---|---|---|
-| **Current** | 6 months | New features, may have breaking changes between minors |
-| **Active LTS** | 18 months | Bug fixes, security patches, non-breaking backports |
-| **Maintenance** | 12 months | Critical security fixes only |
-
-**Why it matters for production:**
-
-Run Active LTS in production. Current releases are for testing upcoming features — they may have bugs or instability that haven't been caught yet. Maintenance LTS means you're getting only emergency patches and should be planning your upgrade. Running an EOL version means no security patches at all.
-
-**Notable recent additions reducing third-party needs:**
-
-- **Built-in test runner** (stable in Node.js 20): `node:test` module with `describe`, `it`, `beforeEach`, mocking, and code coverage. Replaces Jest/Mocha for many use cases, especially in libraries.
-- **Native fetch** (stable in Node.js 21): Built on undici, no need for `node-fetch` or `axios` for basic HTTP requests. Includes `Request`, `Response`, `Headers` globals.
-- **Permission model** (experimental, Node.js 20+): `--experimental-permission` flag restricts file system access, child process spawning, and worker creation. Run with `--allow-fs-read=/app/config` to whitelist specific paths.
-- **Native watch mode** (`--watch`, stable in Node.js 22): Restarts the process on file changes. Replaces `nodemon` for development.
-- **Single-file executables** (experimental): Compile a Node.js app into a standalone binary without requiring Node.js on the target machine.
-
-**Managing versions with nvm/fnm:**
-
-Both tools let you switch Node.js versions per project using a `.nvmrc` or `.node-version` file:
-
-```bash
-# .nvmrc in project root
-22.12.0
-
-# Switch versions
-nvm use           # reads .nvmrc
-fnm use           # reads .node-version or .nvmrc
-```
-
-**fnm vs nvm:** fnm is written in Rust, significantly faster (instant version switches vs nvm's ~200ms shell overhead), and supports automatic switching via shell hooks. nvm is the established default with wider adoption. For new setups, fnm is the better choice.
-
-</details>
-
-<details>
-<summary>18. What are the most dangerous Node.js-specific security vulnerabilities — how does prototype pollution work and why is it especially dangerous in JavaScript, what makes regular expressions vulnerable to ReDoS attacks, why is child_process.exec vulnerable to shell injection while execFile is not, how do dependency supply chain attacks happen (typosquatting, compromised maintainers, install scripts), and what do npm audit and lockfile integrity checks actually protect against?</summary>
+<summary>16. What are the most dangerous Node.js-specific security vulnerabilities — how does prototype pollution work and why is it especially dangerous in JavaScript, what makes regular expressions vulnerable to ReDoS attacks, why is child_process.exec vulnerable to shell injection while execFile is not, how do dependency supply chain attacks happen (typosquatting, compromised maintainers, install scripts), and what do npm audit and lockfile integrity checks actually protect against?</summary>
 
 **1. Prototype pollution:**
 
@@ -1050,7 +947,7 @@ execFile('ls', [userInput]); // passes "; rm -rf /" as a literal filename argume
 ## Practical — Implementation & Configuration
 
 <details>
-<summary>19. Build a stream pipeline that reads a large file, transforms each line (e.g., parse CSV to JSON), and writes the output to another file — use pipeline() instead of pipe(), implement proper backpressure handling, show what happens when the writable side is slower than the readable side, and explain why pipeline() is preferred for error handling and cleanup</summary>
+<summary>17. Build a stream pipeline that reads a large file, transforms each line (e.g., parse CSV to JSON), and writes the output to another file — use pipeline() instead of pipe(), implement proper backpressure handling, show what happens when the writable side is slower than the readable side, and explain why pipeline() is preferred for error handling and cleanup</summary>
 
 ```typescript
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -1180,7 +1077,7 @@ Always use `pipeline()`. There's no reason to use `pipe()` in new code.
 </details>
 
 <details>
-<summary>20. Implement a CPU-intensive task (e.g., hashing or data processing) using worker_threads — show the main thread and worker code, demonstrate message passing with postMessage and SharedArrayBuffer, and explain when you'd use a worker thread pool pattern vs spawning workers on demand</summary>
+<summary>18. Implement a CPU-intensive task (e.g., hashing or data processing) using worker_threads — show the main thread and worker code, demonstrate message passing with postMessage and SharedArrayBuffer, and explain when you'd use a worker thread pool pattern vs spawning workers on demand</summary>
 
 **Basic worker thread — message passing with postMessage:**
 
@@ -1311,7 +1208,7 @@ app.post('/hash', async (req, res) => {
 </details>
 
 <details>
-<summary>21. Implement AsyncLocalStorage to propagate a request ID through an HTTP request's entire lifecycle (middleware → service → database call → logger) — show the setup code, how to access the store in nested async functions, and what breaks if you use callbacks that aren't async-context-aware</summary>
+<summary>19. Implement AsyncLocalStorage to propagate a request ID through an HTTP request's entire lifecycle (middleware → service → database call → logger) — show the setup code, how to access the store in nested async functions, and what breaks if you use callbacks that aren't async-context-aware</summary>
 
 This builds on the AsyncLocalStorage concepts from Q9 with a complete, production-ready implementation.
 
@@ -1477,7 +1374,7 @@ emitter.on('data', () => {
 </details>
 
 <details>
-<summary>22. Set up the same REST endpoint in both Express (middleware chain) and Fastify (plugin with JSON schema validation) — show both implementations side by side, demonstrate how Fastify's schema-based serialization avoids JSON.stringify overhead, and explain the performance difference</summary>
+<summary>20. Set up the same REST endpoint in both Express (middleware chain) and Fastify (plugin with JSON schema validation) — show both implementations side by side, demonstrate how Fastify's schema-based serialization avoids JSON.stringify overhead, and explain the performance difference</summary>
 
 This builds on the architectural comparison in Q10 with concrete code.
 
@@ -1609,7 +1506,7 @@ This compiled serializer is 2-3x faster than `JSON.stringify` for typical API re
 </details>
 
 <details>
-<summary>23. Set up a Node.js package that supports both CommonJS (require) and ES Modules (import) consumers — show the package.json exports field, the directory structure with .cjs/.mjs files or dual builds, and explain the common pitfalls (dual package hazard, conditional exports resolution)</summary>
+<summary>21. Set up a Node.js package that supports both CommonJS (require) and ES Modules (import) consumers — show the package.json exports field, the directory structure with .cjs/.mjs files or dual builds, and explain the common pitfalls (dual package hazard, conditional exports resolution)</summary>
 
 This is the practical implementation of the dual-package concepts from Q8.
 
@@ -1771,7 +1668,7 @@ Without the `"./utils"` entry, `import { something } from 'my-lib/utils'` throws
 </details>
 
 <details>
-<summary>24. Show how to use Node.js core APIs in a realistic scenario — read a file with fs/promises, hash its contents with crypto, resolve paths cross-platform with path.join/path.resolve, and work with the raw binary data using Buffer. Explain why Buffer exists (Node.js handles binary data that JavaScript strings can't represent), when you'd use util.promisify vs the built-in promise APIs, and what common mistakes developers make with path manipulation across operating systems.</summary>
+<summary>22. Show how to use Node.js core APIs in a realistic scenario — read a file with fs/promises, hash its contents with crypto, resolve paths cross-platform with path.join/path.resolve, and work with the raw binary data using Buffer. Explain why Buffer exists (Node.js handles binary data that JavaScript strings can't represent), when you'd use util.promisify vs the built-in promise APIs, and what common mistakes developers make with path manipulation across operating systems.</summary>
 
 **Realistic scenario — file integrity checker:**
 
@@ -1905,7 +1802,7 @@ path.extname('.gitignore');       // '' — dotfiles have no extension
 ## Practical — Production Patterns
 
 <details>
-<summary>25. Implement graceful shutdown for a Node.js HTTP server — show the SIGTERM/SIGINT handlers that stop accepting new connections, drain in-flight requests with a timeout, clean up resources (database connections, open file handles), and exit with the correct code. What happens to long-running requests that exceed the grace period, and how does terminationGracePeriodSeconds in Kubernetes interact with your application-level grace period?</summary>
+<summary>23. Implement graceful shutdown for a Node.js HTTP server — show the SIGTERM/SIGINT handlers that stop accepting new connections, drain in-flight requests with a timeout, clean up resources (database connections, open file handles), and exit with the correct code. What happens to long-running requests that exceed the grace period, and how does terminationGracePeriodSeconds in Kubernetes interact with your application-level grace period?</summary>
 
 This is the implementation of the graceful shutdown concepts from Q11.
 
@@ -2044,7 +1941,7 @@ lifecycle:
 </details>
 
 <details>
-<summary>26. Implement a production error handling strategy that distinguishes between operational errors (network timeout, file not found, validation failure) and programmer errors (TypeError, null reference) — show how to structure try/catch boundaries, when to let the process crash vs recover, and how to handle unhandledRejection with proper logging</summary>
+<summary>24. Implement a production error handling strategy that distinguishes between operational errors (network timeout, file not found, validation failure) and programmer errors (TypeError, null reference) — show how to structure try/catch boundaries, when to let the process crash vs recover, and how to handle unhandledRejection with proper logging</summary>
 
 This is the implementation of the error philosophy from Q12.
 
@@ -2211,7 +2108,7 @@ Error occurs
 </details>
 
 <details>
-<summary>27. Given a code snippet that mixes setTimeout, setImmediate, process.nextTick(), Promise.then(), and queueMicrotask() — predict the exact execution order, explain why each callback runs when it does, and show how wrapping the same code inside an I/O callback (e.g., fs.readFile) changes the order</summary>
+<summary>25. Given a code snippet that mixes setTimeout, setImmediate, process.nextTick(), Promise.then(), and queueMicrotask() — predict the exact execution order, explain why each callback runs when it does, and show how wrapping the same code inside an I/O callback (e.g., fs.readFile) changes the order</summary>
 
 This applies the event loop theory from Q3 and Q14 to a concrete prediction exercise.
 
@@ -2326,7 +2223,7 @@ The nextTick queue is drained completely (including new entries added during dra
 </details>
 
 <details>
-<summary>28. You're running a Node.js app that makes many DNS lookups and file system calls, and you notice requests stalling under load — demonstrate how to diagnose that the default libuv thread pool (size 4) is the bottleneck, show how to set UV_THREADPOOL_SIZE correctly, and explain why setting it too high is also harmful</summary>
+<summary>26. You're running a Node.js app that makes many DNS lookups and file system calls, and you notice requests stalling under load — demonstrate how to diagnose that the default libuv thread pool (size 4) is the bottleneck, show how to set UV_THREADPOOL_SIZE correctly, and explain why setting it too high is also harmful</summary>
 
 This is the practical debugging scenario for the thread pool concepts from Q4.
 
@@ -2439,7 +2336,7 @@ Common production values: 8-64, depending on workload. Most apps do well with 16
 </details>
 
 <details>
-<summary>29. Create a custom EventEmitter subclass that properly handles the 'error' event, sets appropriate maxListeners, and prevents memory leaks from unremoved listeners — show what happens when you emit 'error' without a listener, how to debug the "MaxListenersExceededWarning," and the pattern for cleanup in long-lived emitters</summary>
+<summary>27. Create a custom EventEmitter subclass that properly handles the 'error' event, sets appropriate maxListeners, and prevents memory leaks from unremoved listeners — show what happens when you emit 'error' without a listener, how to debug the "MaxListenersExceededWarning," and the pattern for cleanup in long-lived emitters</summary>
 
 **Custom EventEmitter subclass with proper error handling:**
 
@@ -2621,7 +2518,7 @@ class RequestHandler {
 ## Practical — Debugging & Profiling
 
 <details>
-<summary>30. Walk through diagnosing a memory leak in a Node.js application — show how to take heap snapshots with --inspect and Chrome DevTools (or the heapdump module), how to compare two snapshots to find retained objects, how to identify common culprits (growing arrays, closures, event listeners), how process.memoryUsage() and v8.getHeapStatistics() help you monitor memory programmatically, and what --max-old-space-size controls</summary>
+<summary>28. Walk through diagnosing a memory leak in a Node.js application — show how to take heap snapshots with --inspect and Chrome DevTools (or the heapdump module), how to compare two snapshots to find retained objects, how to identify common culprits (growing arrays, closures, event listeners), how process.memoryUsage() and v8.getHeapStatistics() help you monitor memory programmatically, and what --max-old-space-size controls</summary>
 
 This is the practical diagnostic workflow for the GC concepts from Q7 and the diagnostics overview from Q13.
 
@@ -2748,7 +2645,7 @@ Without this, the default 1.5GB exceeds a 1GB container and the OOM killer termi
 </details>
 
 <details>
-<summary>31. A Node.js API has intermittent slow responses — walk through generating a CPU profile (--prof or Chrome DevTools), reading a flame graph to identify hot functions, and determining whether the bottleneck is synchronous code blocking the event loop, excessive GC pauses, or something else entirely</summary>
+<summary>29. A Node.js API has intermittent slow responses — walk through generating a CPU profile (--prof or Chrome DevTools), reading a flame graph to identify hot functions, and determining whether the bottleneck is synchronous code blocking the event loop, excessive GC pauses, or something else entirely</summary>
 
 This builds on the diagnostics overview from Q13 with a step-by-step profiling walkthrough.
 
@@ -2847,10 +2744,10 @@ node --trace-gc server.js
 #                                                        120ms pause — this is your problem
 ```
 
-- Long Mark-Sweep-Compact pauses indicate old generation pressure — likely a memory leak or objects living longer than necessary. See Q30 for heap snapshot diagnosis.
+- Long Mark-Sweep-Compact pauses indicate old generation pressure — likely a memory leak or objects living longer than necessary. See Q28 for heap snapshot diagnosis.
 
 **Something else entirely:**
-- **Thread pool saturation:** Low event loop lag, low CPU, but high latency on endpoints doing DNS/file I/O. Profile won't show it because the main thread is idle. See Q28.
+- **Thread pool saturation:** Low event loop lag, low CPU, but high latency on endpoints doing DNS/file I/O. Profile won't show it because the main thread is idle. See Q26.
 - **Downstream latency:** Flame graph shows the app spending most time in `await` (which doesn't appear as CPU time). Use distributed tracing instead.
 - **OS-level issues:** File descriptor exhaustion, network congestion, container CPU throttling. Check with `lsof`, `dmesg`, and container metrics.
 
@@ -2861,15 +2758,15 @@ Intermittent slow responses
 ├── Event loop lag high?
 │   ├── YES → CPU profile → find hot function → optimize or offload
 │   └── NO → Not an event loop problem
-│       ├── Thread pool latency high? → UV_THREADPOOL_SIZE (Q28)
+│       ├── Thread pool latency high? → UV_THREADPOOL_SIZE (Q26)
 │       ├── Specific endpoints only? → Distributed tracing → slow downstream
-│       └── Memory growing? → GC pauses → heap snapshots (Q30)
+│       └── Memory growing? → GC pauses → heap snapshots (Q28)
 ```
 
 </details>
 
 <details>
-<summary>32. Your Node.js service in production starts throwing ECONNRESET errors on outbound HTTP requests and EMFILE errors when opening files — explain what each error means at the OS level, walk through the debugging steps (checking open file descriptors with lsof, ulimit settings, connection pool configuration), and show the fixes</summary>
+<summary>30. Your Node.js service in production starts throwing ECONNRESET errors on outbound HTTP requests and EMFILE errors when opening files — explain what each error means at the OS level, walk through the debugging steps (checking open file descriptors with lsof, ulimit settings, connection pool configuration), and show the fixes</summary>
 
 **ECONNRESET — what it means at the OS level:**
 
@@ -2966,7 +2863,7 @@ const stream = createReadStream('file.txt');
 stream.on('data', process);
 // If an error occurs before 'end', the fd leaks
 
-// GOOD — use pipeline (auto-closes on error or completion, as covered in Q19)
+// GOOD — use pipeline (auto-closes on error or completion, as covered in Q17)
 import { pipeline } from 'node:stream/promises';
 await pipeline(createReadStream('file.txt'), transformStream, writable);
 
@@ -3023,7 +2920,7 @@ Increasing `ulimit` is a band-aid — it raises the ceiling but doesn't fix the 
 </details>
 
 <details>
-<summary>33. Your Node.js API's p99 latency has doubled over the past week with no code changes — use clinic.js (Doctor, Flame, Bubbleprof) to diagnose the regression. Explain what each clinic.js tool measures, walk through the workflow of running clinic doctor for an initial diagnosis then drilling down with clinic flame or bubbleprof based on the findings, and how to interpret the output to identify the root cause</summary>
+<summary>31. Your Node.js API's p99 latency has doubled over the past week with no code changes — use clinic.js (Doctor, Flame, Bubbleprof) to diagnose the regression. Explain what each clinic.js tool measures, walk through the workflow of running clinic doctor for an initial diagnosis then drilling down with clinic flame or bubbleprof based on the findings, and how to interpret the output to identify the root cause</summary>
 
 **The three clinic.js tools and what each measures:**
 
@@ -3052,8 +2949,8 @@ Doctor shows four charts over time: CPU %, RSS memory, event loop delay, and act
 
 - **"Event loop is blocked"** → CPU chart is high, event loop delay spikes. Something synchronous is hogging the thread. → Use **clinic flame** next.
 - **"I/O issue detected"** → CPU is low, event loop delay is low, but latency is high. Time is spent waiting for I/O (database, file system, network). → Use **clinic bubbleprof** next.
-- **"Memory issue detected"** → RSS grows monotonically. Likely a memory leak causing GC pressure. → Use heap snapshots (Q30).
-- **"Active handles growing"** → File descriptors or connections are leaking. → Check for unclosed handles (Q32).
+- **"Memory issue detected"** → RSS grows monotonically. Likely a memory leak causing GC pressure. → Use heap snapshots (Q28).
+- **"Active handles growing"** → File descriptors or connections are leaking. → Check for unclosed handles (Q30).
 
 **Step 2a — Drill down with clinic flame (event loop blocked):**
 
@@ -3091,7 +2988,7 @@ Bubbleprof shows async operations as bubbles. Size = time spent. Color = type (n
   - Database query latency increased (larger tables, missing index, connection pool exhaustion).
   - A downstream service got slower (new version deployed, increased load).
   - DNS resolution got slower (DNS server change, cache eviction).
-  - Thread pool saturation (as covered in Q28) — file/DNS operations waiting for threads.
+  - Thread pool saturation (as covered in Q26) — file/DNS operations waiting for threads.
 
 **Step 3 — Identify the root cause for "no code changes" regression:**
 
@@ -3119,7 +3016,7 @@ The clinic.js workflow (doctor → flame or bubbleprof) narrows the search space
 These questions test real-world experience. Prepare by mapping them to your own projects and situations.
 
 <details>
-<summary>34. Tell me about a time you debugged a memory leak or performance issue in a Node.js application — what were the symptoms, what tools did you use, and what was the root cause?</summary>
+<summary>32. Tell me about a time you debugged a memory leak or performance issue in a Node.js application — what were the symptoms, what tools did you use, and what was the root cause?</summary>
 
 **What the interviewer is looking for:**
 
@@ -3156,7 +3053,7 @@ These questions test real-world experience. Prepare by mapping them to your own 
 </details>
 
 <details>
-<summary>35. Describe a time you had to choose between worker threads, child processes, or the cluster module for scaling a Node.js service — what was the workload, what did you choose and why, and what were the results?</summary>
+<summary>33. Describe a time you had to choose between worker threads, child processes, or the cluster module for scaling a Node.js service — what was the workload, what did you choose and why, and what were the results?</summary>
 
 **What the interviewer is looking for:**
 
@@ -3192,11 +3089,11 @@ These questions test real-world experience. Prepare by mapping them to your own 
 </details>
 
 <details>
-<summary>36. Tell me about a time you had to deal with a Node.js security issue in production or during development — what was the vulnerability (dependency issue, prototype pollution, ReDoS, supply chain attack), how did you discover it, and what did you do to prevent it from recurring?</summary>
+<summary>34. Tell me about a time you had to deal with a Node.js security issue in production or during development — what was the vulnerability (dependency issue, prototype pollution, ReDoS, supply chain attack), how did you discover it, and what did you do to prevent it from recurring?</summary>
 
 **What the interviewer is looking for:**
 
-- Awareness of the Node.js-specific attack surface (supply chain, prototype pollution, ReDoS — covered in Q18).
+- Awareness of the Node.js-specific attack surface (supply chain, prototype pollution, ReDoS — covered in Q16).
 - A structured incident response: discovery, assessment, remediation, prevention.
 - Understanding of the difference between a vulnerability existing and it being exploitable.
 - Proactive security practices, not just reactive firefighting.
@@ -3230,7 +3127,7 @@ These questions test real-world experience. Prepare by mapping them to your own 
 </details>
 
 <details>
-<summary>37. Describe a time you handled a production Node.js incident — what went wrong (OOM, unhandled rejections, event loop blocking, cascading failures), how did you diagnose and resolve it, and what changes did you make to prevent it from recurring?</summary>
+<summary>35. Describe a time you handled a production Node.js incident — what went wrong (OOM, unhandled rejections, event loop blocking, cascading failures), how did you diagnose and resolve it, and what changes did you make to prevent it from recurring?</summary>
 
 **What the interviewer is looking for:**
 
