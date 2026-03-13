@@ -41,7 +41,7 @@ This repo uses dedicated **agents** (`.claude/agents/`) to execute **skills** (`
 | `review-questions` | Reviews questions for quality, compliance with guidelines, and structural correctness. Outputs a violation report. |
 | `fix-questions` | Applies violation report fixes to a topic file's questions (splits, adds, removes, rewrites), then deletes the report. |
 | `apply-checklist` | Cross-references a topic file against `checklists.md` and applies missing coverage — adds summary bullets and questions in one pass. |
-| `generate-answers` | Fills in senior-level answers for all questions. Batches of 10, stops after each batch. Resumable — skips already-answered questions. Uses context7 for accuracy. |
+| `generate-answers` | Fills in senior-level answers for all questions. Batches of 20, stops after each batch. Resumable — skips already-answered questions. Uses context7 for accuracy. |
 | `review-answers` | Reviews answers for quality, compliance with the 5 Pillars. Outputs an answer review report. Uses context7 for accuracy checks. |
 | `fix-answers` | Applies answer review report fixes to a topic file's answers, then deletes the report. Uses context7 for accuracy verification. |
 

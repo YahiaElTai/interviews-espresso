@@ -1,6 +1,6 @@
 ---
 name: generate-answers
-description: Generates senior-level answers for all questions in a topic file, following the 5 pillars. Processes in batches of 10 to maintain quality.
+description: Generates senior-level answers for all questions in a topic file, following the 5 pillars. Processes in batches of 20 to maintain quality.
 argument-hint: <file-path>
 disable-model-invocation: false
 ---
@@ -59,8 +59,8 @@ The section header signals expected depth: `## Foundational` → direct answers;
 
 **First, check for existing answers.** If the file already has some answers filled in, count how many questions still have `<!-- Answer will be added later -->` or `<!-- Answer framework will be added later -->` placeholders. Read all existing answers to maintain context and consistency, then continue from where the previous run left off.
 
-- **10 or fewer unanswered questions**: Answer all remaining unanswered questions in a single pass. Write the complete file.
-- **More than 10 unanswered questions**: Answer the next 10 unanswered questions, write the file with those answers filled in (keeping remaining questions with their placeholders intact), then STOP.
+- **20 or fewer unanswered questions**: Answer all remaining unanswered questions in a single pass. Write the complete file.
+- **More than 20 unanswered questions**: Answer the next 20 unanswered questions, write the file with those answers filled in (keeping remaining questions with their placeholders intact), then STOP.
 
 **Always report back** with a summary including:
 - File path
