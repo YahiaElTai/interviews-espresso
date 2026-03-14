@@ -880,7 +880,7 @@ import { Cluster } from 'ioredis';
 const cluster = new Cluster(
   [{ host: 'redis-node-1', port: 6379 }],
   {
-    scaleReads: 'slave',         // read from replicas
+    scaleReads: 'replica',       // read from replicas
     enableAutoPipelining: true,
     redisOptions: {
       maxRetriesPerRequest: 3,
@@ -939,9 +939,18 @@ app.post('/orders/:id/confirm', async (req, res) => {
 
   // Enqueue side effects — each takes <5ms to enqueue
   await Promise.all([
-    emailQueue.add('order-confirmation', { orderId: order.id }),
-    pdfQueue.add('invoice', { orderId: order.id }),
-    analyticsQueue.add('order-confirmed', { orderId: order.id }),
+    emailQueue.add('order-confirmation', { orderId: order.id }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+    }),
+    pdfQueue.add('invoice', { orderId: order.id }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+    }),
+    analyticsQueue.add('order-confirmed', { orderId: order.id }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+    }),
   ]);
 
   res.json({ order, invoiceStatus: 'processing' }); // Total: ~60ms
@@ -969,8 +978,6 @@ const pdfWorker = new Worker(
   {
     connection,
     concurrency: 5, // process up to 5 PDFs in parallel
-    attempts: 3,    // retry up to 3 times on failure
-    backoff: { type: 'exponential', delay: 1000 },
   },
 );
 
@@ -1293,7 +1300,11 @@ This serializes small chunks (100 records at a time), keeping event loop blockin
 
 </details>
 
-## Practical — Profiling & Debugging<details>
+---
+
+## Practical — Profiling & Debugging
+
+<details>
 <summary>21. An API endpoint that was fast last month is now consistently slow (p99 went from 200ms to 2s) — walk through the systematic diagnosis process across every layer of the request lifecycle: how you'd isolate whether the problem is in DNS/TLS, the load balancer, application code, database queries, or an external dependency, showing the exact tools and commands at each step</summary>
 
 The goal is to eliminate layers systematically, narrowing from broad to specific. Don't guess -- measure at each layer and let the data tell you where to look next.

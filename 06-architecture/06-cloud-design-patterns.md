@@ -43,7 +43,6 @@ The fundamental assumption that changes: **infrastructure is unreliable and disp
 - Queue-based load leveling (decouple ingestion rate from processing rate)
 - Health checks that orchestrators use to route traffic correctly
 
-On a single reliable server, a simple try/catch and a local function call are sufficient. In the cloud, the network IS your application — and the patterns exist to make unreliable components compose into a reliable system.
 
 </details>
 
@@ -140,7 +139,7 @@ Full jitter provides the best spread and the lowest overall load on the recoveri
 | Network timeout, connection reset | 400 Bad Request (invalid input won't fix itself) |
 | 503 Service Unavailable | 401/403 Unauthorized/Forbidden |
 | 429 Too Many Requests (with Retry-After) | 404 Not Found |
-| 500 Internal Server Error (sometimes) | 409 Conflict (idempotency violation) |
+| 500 Internal Server Error (sometimes) | 409 Conflict (context-dependent — terminal for idempotency violations, but retryable if caused by a stale version that can be re-read) |
 | DNS resolution failure | 422 Unprocessable Entity |
 
 The key principle: **retry only when there's a reasonable expectation the same request will succeed later**. A 400 means your request is malformed — sending it again won't help. A 503 means the server is temporarily overloaded — it might recover.
@@ -241,6 +240,27 @@ In Node.js (single-threaded, no thread pools for app logic), bulkheads typically
 - **Concurrency semaphores**: Cap the number of in-flight async operations per dependency
 - **Separate connection pools**: Different database/HTTP clients per downstream
 - **Queue isolation**: Separate queues per dependency type so one backlogged queue doesn't block others
+
+A minimal async semaphore in Node.js:
+
+```typescript
+class Semaphore {
+  private running = 0;
+  private queue: (() => void)[] = [];
+
+  constructor(private readonly max: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.running < this.max) { this.running++; return; }
+    await new Promise<void>((resolve) => this.queue.push(resolve));
+  }
+
+  release(): void {
+    this.running--;
+    this.queue.shift()?.();
+  }
+}
+```
 
 **Tradeoffs of strict isolation:**
 
@@ -364,12 +384,16 @@ On cache miss, acquire a distributed lock for that key. Only the lock holder fet
 - Cons: Lock contention, added latency for waiters, lock expiry tuning (too short = multiple fetches; too long = requests hang)
 
 **2. Probabilistic early expiration — prevents thundering herd:**
-Each cache entry stores the actual TTL but individual requests recompute the value *before* expiry with some probability. As the TTL approaches, the probability of a refresh increases. By the time the key actually expires, it's likely already been refreshed.
+Each cache entry stores the actual TTL but individual requests recompute the value *before* expiry with some probability. As the TTL approaches, the probability of a refresh increases. By the time the key actually expires, it's likely already been refreshed. The well-known XFetch algorithm (Vattani et al.) uses this formulation:
 ```
-shouldRefresh = Math.random() < (BETA * Math.log(Math.random())) + (ttlRemaining / totalTtl)
+// Recompute early if: currentTime - (BETA * log(random()) * computeTime) >= expiry
+// BETA controls how aggressively to refresh early (typically 1.0)
+// computeTime is how long the DB fetch takes
+// As currentTime approaches expiry, the condition becomes more likely to trigger
+shouldRefresh = Date.now() - (BETA * Math.log(Math.random()) * computeTimeMs) >= expiryTimestamp
 ```
 - Pros: No locks, no coordination, spreads refresh over time
-- Cons: Occasionally refreshes too early (wasted work), tuning the probability function
+- Cons: Occasionally refreshes too early (wasted work), tuning BETA and estimating compute time
 
 **3. Stale-while-revalidate — prevents both:**
 Serve the stale cached value immediately while asynchronously fetching a fresh value in the background. The caller gets a fast (possibly slightly outdated) response, and the cache is updated for subsequent requests.
@@ -741,6 +765,7 @@ type CircuitState = 'closed' | 'open' | 'half-open';
 class CircuitBreaker {
   private state: CircuitState = 'closed';
   private failureCount = 0;
+  private halfOpenSuccessCount = 0;
   private lastFailureTime = 0;
   private readonly bulkhead: Bulkhead;
 
@@ -765,6 +790,7 @@ class CircuitBreaker {
         throw new CircuitOpenError('Circuit is open');
       }
       this.state = 'half-open'; // timeout expired, probe
+      this.halfOpenSuccessCount = 0;
     }
 
     // Bulkhead wraps the retried call
@@ -787,8 +813,12 @@ class CircuitBreaker {
 
   private onSuccess(): void {
     if (this.state === 'half-open') {
-      // Simplified: one success closes. Production: track halfOpenTrials.
-      this.state = 'closed';
+      this.halfOpenSuccessCount++;
+      if (this.halfOpenSuccessCount >= this.opts.halfOpenTrials) {
+        this.state = 'closed';
+        this.halfOpenSuccessCount = 0;
+      }
+      return; // don't reset failureCount until fully closed
     }
     this.failureCount = 0;
   }
@@ -1117,7 +1147,40 @@ The `SagaStore` saves state to the database before and after each step. If the p
 
 This is why compensations must be idempotent — on crash recovery, we might re-execute a compensation that partially ran before the crash. The `reservationId` and `paymentId` stored in the context enable idempotent compensations (the service can check "was this already released/refunded?").
 
-A PostgreSQL implementation would store the `SagaState` as a JSONB column, queried by `sagaId` and indexed on `status` for recovery scanning.
+A PostgreSQL implementation:
+
+```sql
+CREATE TABLE sagas (
+  saga_id TEXT PRIMARY KEY,
+  state JSONB NOT NULL,
+  status TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_sagas_status ON sagas (status) WHERE status IN ('running', 'compensating');
+```
+
+```typescript
+class PostgresSagaStore<TContext> implements SagaStore<TContext> {
+  constructor(private readonly db: Pool) {}
+
+  async save(state: SagaState<TContext>): Promise<void> {
+    await this.db.query(
+      `INSERT INTO sagas (saga_id, state, status, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (saga_id)
+       DO UPDATE SET state = $2, status = $3, updated_at = now()`,
+      [state.sagaId, JSON.stringify(state), state.status]
+    );
+  }
+
+  async load(sagaId: string): Promise<SagaState<TContext> | null> {
+    const result = await this.db.query('SELECT state FROM sagas WHERE saga_id = $1', [sagaId]);
+    return result.rows[0]?.state ?? null;
+  }
+}
+```
+
+The `status` index filtered to `running`/`compensating` enables the recovery process to efficiently find incomplete sagas on restart.
 
 </details>
 
@@ -1225,7 +1288,7 @@ const product = await getOrSet(
 <details>
 <summary>21. Design timeout budget propagation across a three-service call chain in TypeScript — Service A receives a request with a 5-second deadline, calls Service B which calls Service C. Show how each service calculates the remaining budget (subtracting elapsed time and local processing overhead), passes it to the next service via headers or context, and how the deepest service uses the remaining budget for its own downstream calls. What happens when the budget is already exhausted before a call is made?</summary>
 
-Building on the concepts from question 5, here is a complete implementation with shared middleware, per-service handlers, and budget exhaustion handling.
+Building on the concepts from question 5, here is a complete implementation. All three services share the same middleware and utility functions — only the handler logic differs.
 
 **Shared deadline middleware and utilities (used by all services):**
 
@@ -1241,7 +1304,6 @@ function deadlineMiddleware(defaultTimeoutMs: number) {
     const header = req.headers[DEADLINE_HEADER];
     const deadline = header ? Number(header) : Date.now() + defaultTimeoutMs;
     (req as any).deadline = deadline;
-    (req as any).startTime = Date.now();
     next();
   };
 }
@@ -1292,103 +1354,32 @@ class DeadlineExceededError extends Error {
 }
 ```
 
-**Service A (entry point, receives external request):**
+**Service handler (same pattern at every level in the chain):**
+
+Each service uses `deadlineMiddleware` with its own default timeout, does local work, then calls downstream with `callWithBudget`. The deepest service uses the remaining budget to cap its own computation instead of making another downstream call.
 
 ```typescript
+// Service A: entry point, 5s default for external requests
 const appA = express();
-appA.use(deadlineMiddleware(5000)); // 5s default for external requests
+appA.use(deadlineMiddleware(5000));
 
 appA.post('/process', async (req: Request, res: Response) => {
   const deadline = (req as any).deadline as number;
 
   try {
-    // Local work: validate input, check auth (~100ms)
-    const validated = validateInput(req.body);
-
-    // Call Service B with remaining budget
-    const resultB = await callWithBudget(
-      'http://service-b:3001/enrich',
-      deadline,
-      validated
+    const validated = validateInput(req.body);        // local work ~100ms
+    const resultB = await callWithBudget(             // downstream call
+      'http://service-b:3001/enrich', deadline, validated
     );
-
-    // More local work after B returns (~50ms)
-    const finalResult = assembleResponse(resultB);
-    res.json(finalResult);
+    res.json(assembleResponse(resultB));
   } catch (err) {
-    if (err instanceof DeadlineExceededError) {
-      res.status(504).json({ error: 'Request deadline exceeded' });
-    } else {
-      res.status(500).json({ error: 'Internal error' });
-    }
+    const status = err instanceof DeadlineExceededError ? 504 : 500;
+    res.status(status).json({ error: err instanceof DeadlineExceededError ? 'Deadline exceeded' : 'Internal error' });
   }
 });
 ```
 
-**Service B (middle of chain):**
-
-```typescript
-const appB = express();
-appB.use(deadlineMiddleware(3000)); // 3s default if no deadline header
-
-appB.post('/enrich', async (req: Request, res: Response) => {
-  const deadline = (req as any).deadline as number;
-
-  try {
-    // Local work: database query (~200ms)
-    const dbResult = await queryDatabase(req.body);
-
-    // Call Service C with remaining budget
-    const resultC = await callWithBudget(
-      'http://service-c:3002/compute',
-      deadline,
-      dbResult
-    );
-
-    res.json({ ...dbResult, computed: resultC });
-  } catch (err) {
-    if (err instanceof DeadlineExceededError) {
-      res.status(504).json({ error: 'Deadline exceeded in Service B' });
-    } else {
-      res.status(500).json({ error: 'Internal error' });
-    }
-  }
-});
-```
-
-**Service C (deepest in chain):**
-
-```typescript
-const appC = express();
-appC.use(deadlineMiddleware(2000));
-
-appC.post('/compute', async (req: Request, res: Response) => {
-  const deadline = (req as any).deadline as number;
-  const remaining = getRemainingBudget(deadline);
-
-  if (remaining <= 0) {
-    return res.status(504).json({ error: 'No budget remaining' });
-  }
-
-  try {
-    // Use remaining budget for its own work (e.g., external API call)
-    const result = await Promise.race([
-      expensiveComputation(req.body),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new DeadlineExceededError('Computation exceeded budget')), remaining)
-      ),
-    ]);
-
-    res.json(result);
-  } catch (err) {
-    if (err instanceof DeadlineExceededError) {
-      res.status(504).json({ error: 'Deadline exceeded in Service C' });
-    } else {
-      res.status(500).json({ error: 'Internal error' });
-    }
-  }
-});
-```
+Services B and C follow the identical pattern: middleware extracts the deadline from the header, the handler does local work, then calls the next service (or, for the deepest service, races its own computation against the remaining budget using `Promise.race` with a `setTimeout` reject).
 
 **Timeline example with 5s budget:**
 

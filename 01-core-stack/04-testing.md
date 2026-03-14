@@ -58,7 +58,7 @@
 
 **Error paths and side effects:** Manual testing naturally follows the happy path — you enter valid data and check the result. Tests can systematically exercise what happens with invalid input, network timeouts, database constraint violations, and concurrent requests. They also verify side effects: did the audit log get written? Was the email event published? Did the cache get invalidated? These are nearly impossible to verify consistently by hand.
 
-**The meta-point:** Tests aren't just a bug-catching mechanism. They're an engineering tool that enables velocity — faster refactoring, safer deployments, and executable specifications that keep the team aligned on expected behavior.
+Tests aren't just a bug-catching mechanism — they're an engineering tool that enables velocity.
 
 </details>
 
@@ -178,7 +178,7 @@ beforeAll(async () => {
 
 **Systematic triage:**
 
-1. **Identify:** CI tools can track tests that fail intermittently (Vitest has `--reporter=hanging-process`, most CI platforms show "flaky" badges). Look for tests that fail < 100% of the time.
+1. **Identify:** CI tools can track tests that fail intermittently (most CI platforms show "flaky" badges, and you can use `vitest run --reporter=json --outputFile=results.json` to track results over time). Look for tests that fail < 100% of the time.
 2. **Reproduce:** Run the test in isolation (`vitest run path/to/test`). If it passes alone, run it with its neighbors. If it only fails in CI, try running with the same parallelism and resource constraints.
 3. **Categorize:** Is it timing? (Look for sleeps, timeouts.) Shared state? (Look for database writes without cleanup.) Order dependence? (Randomize test order.) External service? (Check for HTTP calls without mocks.)
 4. **Fix by category:**
@@ -745,6 +745,8 @@ it('end-to-end event processing', async () => {
 <details>
 <summary>13. Set up test isolation for a test suite that runs in parallel against a shared PostgreSQL database — show the transaction-rollback approach (wrap each test in a transaction that rolls back), compare with truncation and per-test schema approaches, and demonstrate what breaks without isolation when tests run concurrently</summary>
 
+Building on the isolation strategies from Q4, here's the practical implementation for parallel test suites.
+
 **What breaks without isolation:**
 
 ```typescript
@@ -762,11 +764,11 @@ it('lists users returns empty for new system', async () => {
 });
 ```
 
-Both tests pass when run alone, both fail when run together. This is the shared-state problem — the database is the shared mutable state.
+Both tests pass when run alone, both fail when run together. The database is the shared mutable state.
 
-**Approach 1: Transaction rollback**
+**Transaction rollback with SAVEPOINT (handling code that manages its own transactions):**
 
-Each test runs inside a transaction that never commits. Other connections can't see uncommitted data (under default `READ COMMITTED` isolation).
+The basic transaction rollback approach (see Q4) breaks when your code under test calls `BEGIN`/`COMMIT` itself. `SAVEPOINT` solves this:
 
 ```typescript
 import { Pool, PoolClient } from 'pg';
@@ -774,28 +776,6 @@ import { beforeEach, afterEach } from 'vitest';
 
 let client: PoolClient;
 
-beforeEach(async () => {
-  client = await pool.connect();
-  await client.query('BEGIN');
-});
-
-afterEach(async () => {
-  await client.query('ROLLBACK');
-  client.release();
-});
-
-it('creates a user', async () => {
-  await client.query("INSERT INTO users (email) VALUES ('alice@test.com')");
-  const { rows } = await client.query('SELECT COUNT(*) FROM users');
-  expect(rows[0].count).toBe('1'); // only sees this transaction's data
-});
-```
-
-**Key detail:** You must pass the transactional `client` to your code under test, not the pool. If your service acquires its own connection from the pool, it won't see the test's transaction. This is the main limitation — your code must accept an injected connection/transaction.
-
-For code that manages its own transactions, use `SAVEPOINT`:
-
-```typescript
 beforeEach(async () => {
   client = await pool.connect();
   await client.query('BEGIN');
@@ -809,13 +789,11 @@ afterEach(async () => {
 });
 ```
 
-**Approach 2: Truncation (as shown in question 10)**
+The `SAVEPOINT` creates a nested restore point inside the outer transaction. When the code under test issues its own `COMMIT`, it doesn't actually commit (the outer transaction holds it). Rolling back to the savepoint undoes everything cleanly.
 
-Clean all tables between tests. Simpler conceptually but slower and doesn't isolate concurrent workers unless each worker has its own database.
+**Per-worker schemas (for full parallel isolation):**
 
-**Approach 3: Per-worker schemas**
-
-Each Vitest worker gets a dedicated PostgreSQL schema. Full isolation — workers can't interfere with each other.
+When transaction rollback isn't practical, give each Vitest worker its own schema:
 
 ```typescript
 // tests/setup/per-worker-schema.ts
@@ -830,17 +808,15 @@ let pool: Pool;
 beforeAll(async () => {
   pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-  // Create isolated schema for this worker
+  // Safe: schema name comes from test runner, not user input
   await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await pool.query(`CREATE SCHEMA ${schema}`);
   await pool.query(`SET search_path TO ${schema}`);
 
-  // Run migrations in this schema
   await runMigrations(pool);
 });
 
 beforeEach(async () => {
-  // Truncate within this worker's schema between tests
   await pool.query(`
     DO $$ DECLARE r RECORD;
     BEGIN
@@ -857,15 +833,7 @@ afterAll(async () => {
 });
 ```
 
-**Comparison:**
-
-| Approach | Speed | Isolation | Code changes needed | Best for |
-|---|---|---|---|---|
-| **Transaction rollback** | Fastest | Per-test (same connection) | Must inject the transactional client | Tests where you control the DB client |
-| **Truncation** | Moderate | Per-test (sequential only) | None | Sequential test runs, simple setups |
-| **Per-worker schemas** | Slowest setup, fast per-test | Per-worker (full) | Set `search_path` | Parallel CI with many workers |
-
-**Recommendation:** Use transaction rollback for unit/integration tests where you inject the client. Use per-worker schemas for parallel CI runs with Testcontainers. Use truncation as the fallback when rollback isn't practical and you don't need full parallelism.
+**Recommendation:** Start with transaction rollback (Q4). Use the SAVEPOINT variant when your code manages its own transactions. Escalate to per-worker schemas for large parallel suites where rollback isn't practical. See Q4 for the full comparison of tradeoffs between all three approaches.
 
 </details>
 
@@ -1439,9 +1407,15 @@ export async function setup() {
   redis = createClient({ url: redisContainer.getConnectionUrl() });
   await redis.connect();
 
-  // Make available to tests
+  // Make available to tests via globalThis
   globalThis.__TEST_POOL__ = pool;
   globalThis.__TEST_REDIS__ = redis;
+}
+
+// Type declarations for globalThis usage
+declare global {
+  var __TEST_POOL__: Pool;
+  var __TEST_REDIS__: RedisClientType;
 }
 
 export async function teardown() {

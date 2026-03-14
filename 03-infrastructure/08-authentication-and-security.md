@@ -356,6 +356,8 @@ The implementation details of token family tracking are covered in question 17.
 
 Actors: **User** (resource owner), **Client** (your app), **Authorization Server** (e.g., Google, Auth0), **Resource Server** (API with protected data).
 
+**Why a two-step dance (code then token)?** The flow splits into a front channel (browser redirects — visible in URLs) and a back channel (server-to-server — never exposed to the browser). The authorization code travels through the front channel, but tokens are exchanged on the back channel. The `client_secret` in step 6 proves the client's identity, ensuring a stolen authorization code alone is useless. This separation is what makes the flow secure.
+
 ```
 1. User clicks "Login with Google" in the Client
 
@@ -386,8 +388,6 @@ Actors: **User** (resource owner), **Client** (your app), **Authorization Server
 
 8. Client uses access token to call Resource Server APIs
 ```
-
-**Why this two-step dance (code then token)?** The authorization code travels through the browser (front channel — visible in URLs), but tokens are exchanged server-to-server (back channel — never exposed to the browser). The `client_secret` in step 6 proves the client's identity, ensuring a stolen authorization code alone is useless.
 
 **PKCE (Proof Key for Code Exchange):**
 
@@ -782,7 +782,7 @@ These require **Attribute-Based Access Control (ABAC)** — policies that evalua
 **OPA (Open Policy Agent)** is the standard tool for this. You define policies in Rego (OPA's policy language), and your services query OPA for authorization decisions:
 
 ```
-# OPA policy (Rego)
+# OPA policy (Rego) — `input` is the standard request object in Rego
 allow {
   input.action == "edit"
   input.resource.owner == input.user.id   # ownership check
@@ -1339,50 +1339,11 @@ The attacker has the code but can't prove they initiated the flow because they d
 <details>
 <summary>19. Build an API key authentication system — show how to generate cryptographically random keys, store them hashed (with a prefix for identification), verify incoming keys efficiently, implement key rotation (issuing a new key while the old one remains valid for a grace period), and explain the tradeoffs vs bearer tokens</summary>
 
-The key generation, hashing, and rotation concepts were covered in question 10. Here's the complete implementation:
+Using the `generateApiKey`, `hashKey`, and `ApiKeyRecord` foundations from question 10 (key generation with `randomBytes(32)`, SHA-256 hashing, and the record schema with prefix, hash, scopes, expiration). Here's the full CRUD system built on top:
+
+**Key creation endpoint:**
 
 ```typescript
-import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-
-// --- Key generation and hashing ---
-
-function generateApiKey(environment: 'live' | 'test' = 'live'): {
-  fullKey: string;   // shown to user once
-  prefix: string;    // stored for identification
-  hash: string;      // stored for verification
-} {
-  const envPrefix = environment === 'live' ? 'sk_live' : 'sk_test';
-  const secret = randomBytes(32).toString('hex'); // 256 bits
-  const fullKey = `${envPrefix}_${secret}`;
-
-  return {
-    fullKey,
-    prefix: fullKey.slice(0, 12), // "sk_live_a1b2" — enough to identify in logs/UI
-    hash: hashKey(fullKey),
-  };
-}
-
-function hashKey(key: string): string {
-  return createHash('sha256').update(key).digest('hex');
-}
-```
-
-**Database model and key creation endpoint:**
-
-```typescript
-interface ApiKeyRecord {
-  id: string;
-  hash: string;
-  prefix: string;          // first 12 chars for display/lookup
-  label: string;           // human-readable name ("Production webhook key")
-  userId: string;
-  scopes: string[];        // ["orders:read", "orders:write"]
-  expiresAt: Date | null;
-  revokedAt: Date | null;
-  lastUsedAt: Date | null;
-  createdAt: Date;
-}
-
 app.post('/api-keys', requireAuth, async (req, res) => {
   const { label, scopes, expiresInDays } = req.body;
 
@@ -1755,7 +1716,8 @@ Building on the RBAC concepts from question 13, here's the full implementation.
 const PERMISSIONS = {
   'articles:read': 'View articles',
   'articles:write': 'Create and edit articles',
-  'articles:delete': 'Delete articles',
+  'articles:delete': 'Delete own articles',
+  'articles:delete-any': 'Delete any article (admin override)',
   'articles:publish': 'Publish articles',
   'users:read': 'View user profiles',
   'users:write': 'Edit user profiles',
@@ -1780,7 +1742,7 @@ const ROLES: Record<string, RoleDefinition> = {
     inherits: ['viewer'], // editor gets all viewer permissions too
   },
   admin: {
-    permissions: ['articles:delete', 'users:write', 'users:delete', 'settings:manage'],
+    permissions: ['articles:delete', 'articles:delete-any', 'users:write', 'users:delete', 'settings:manage'],
     inherits: ['editor'], // admin gets all editor (and transitively, viewer) permissions
   },
 };
@@ -1885,13 +1847,17 @@ app.delete('/users/:id', authenticate, requirePermissions('users:delete'), delet
 
 3. **Not handling multiple roles:** Users often have multiple roles (e.g., "editor" in one project, "viewer" in another). The permission resolution must aggregate across all roles.
 
-4. **Forgetting resource-level checks:** RBAC tells you "this user can delete articles." It doesn't tell you "this user can delete THIS article." Ownership checks (ABAC territory, as covered in question 13) must happen in the route handler:
+4. **Forgetting resource-level checks:** RBAC tells you "this user can delete articles." It doesn't tell you "this user can delete THIS article." Ownership checks (ABAC territory, as covered in question 13) must happen in the route handler. Note: the route middleware already checked `articles:delete` (the basic permission), so the handler only needs to check ownership and a separate admin-level override permission:
 
 ```typescript
+// Route: app.delete('/articles/:id', authenticate, requirePermissions('articles:delete'), deleteArticle);
+// 'articles:delete' was already checked by middleware — the handler adds ownership logic
+
 async function deleteArticle(req: Request, res: Response) {
   const article = await db.articles.findById(req.params.id);
-  // RBAC passed, but is this THEIR article? (unless they have admin permissions)
-  if (article.authorId !== req.user.id && !getUserPermissions(req.user.roles).has('articles:delete')) {
+  const userPerms = getUserPermissions(req.user.roles);
+  // Owner can delete their own; 'articles:delete-any' overrides ownership (admin-level)
+  if (article.authorId !== req.user.id && !userPerms.has('articles:delete-any')) {
     return res.status(403).json({ error: 'Not your article' });
   }
   await db.articles.delete(req.params.id);

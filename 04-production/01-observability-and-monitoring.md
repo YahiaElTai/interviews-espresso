@@ -464,7 +464,7 @@ const logger = pino({
       'creditCard',
       'body.password',
       'body.secret',
-      '*.password',      // wildcard: any top-level key containing 'password'
+      '*.password',      // wildcard: matches 'password' property inside any top-level object
     ],
     censor: '[REDACTED]',
   },
@@ -555,18 +555,18 @@ node app.js
 This file must be loaded before your application code — it monkey-patches HTTP, database drivers, etc. at import time.
 
 ```typescript
-// instrumentation.ts — loaded via: node --require ./instrumentation.ts app.ts
+// instrumentation.ts — loaded via: node --require ./instrumentation.js app.js (compile first, or use ts-node)
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 const sdk = new NodeSDK({
   // Resource identifies this service in the tracing backend
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'order-service',
     [ATTR_SERVICE_VERSION]: '1.2.0',
   }),
@@ -809,6 +809,7 @@ const requestDuration = meter.createHistogram('http_request_duration_ms', {
 });
 
 // GAUGE: current active connections (value goes up and down)
+// OTel models synchronous gauges as UpDownCounters — createGauge() is only for async/observable gauges.
 const activeConnections = meter.createUpDownCounter('http_active_connections', {
   description: 'Number of currently active HTTP connections',
 });

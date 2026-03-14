@@ -43,7 +43,7 @@ The critical rendering path is the sequence of steps the browser takes from rece
 
 **The preload scanner** partially mitigates this. While the main parser is blocked waiting for a script to execute, a secondary lightweight parser scans ahead in the HTML looking for resources to fetch (`<script>`, `<link>`, `<img>`). This means resources are discovered and fetched in parallel even though DOM construction is paused.
 
-**Why this matters for every optimization decision:** Every performance technique maps back to this pipeline. `async`/`defer` scripts unblock the parser. Critical CSS inlining eliminates a render-blocking round trip. Code splitting reduces JS execution time on the main thread. Preload hints help the preload scanner discover resources earlier. If you do not understand this pipeline, you are guessing at optimizations rather than targeting the actual bottleneck.
+**Why this matters for every optimization decision:** Every performance technique -- `async`/`defer`, critical CSS inlining, code splitting, preload hints -- maps back to unblocking a specific stage of this pipeline. Without understanding it, you are guessing at optimizations rather than targeting the actual bottleneck.
 
 </details>
 
@@ -110,11 +110,7 @@ Core Web Vitals are three metrics that map to the three fundamental aspects of u
 | **INP** (Interaction to Next Paint) | How quickly the page responds to input | < 200ms | "Does it feel responsive when I click/type?" |
 | **CLS** (Cumulative Layout Shift) | How much the page unexpectedly jumps around | < 0.1 | "Is the page visually stable?" |
 
-**Why these three over alternatives:**
-
-- **FCP** was dropped as a Core Vital because it measures when *any* content appears (often a spinner or header), not when *meaningful* content renders. LCP better captures when users perceive the page as loaded.
-- **TTI** (Time to Interactive) was dropped because it measured a synthetic "quiet window" on the main thread -- no user interaction was actually tested. It was noisy in the field and poorly correlated with actual responsiveness. INP measures real interaction latency.
-- **FID** (First Input Delay) was the original responsiveness metric but only measured delay of the *first* interaction and ignored processing time and presentation delay. INP measures the worst interaction throughout the entire page lifecycle, making it far more representative.
+**Why these three over alternatives:** FCP measures when *any* content appears (often a spinner), not meaningful content -- LCP is more representative. TTI measured a synthetic "quiet window" with no real user interaction and was noisy in the field -- INP measures actual interaction latency. FID only captured the *first* interaction's delay, ignoring processing and presentation time -- INP captures the worst interaction across the entire session.
 
 **How each metric works technically:**
 
@@ -206,30 +202,38 @@ A typical web application has routes with fundamentally different requirements. 
 | Number of possible pages? | Manageable (< 50k) | Unlimited | Unlimited |
 | Performance priority | Maximum LCP | Good LCP with fresh data | Interactivity over first paint |
 
-**Practical example in Next.js:**
+**Practical example in Next.js (App Router):**
 
 ```typescript
-// SSG: marketing pages -- built at deploy time
-// pages/about.tsx
-export async function getStaticProps() {
-  const content = await getCMSContent("about");
-  return { props: { content } };
+// SSG: marketing pages -- static by default in App Router
+// app/about/page.tsx
+export default async function AboutPage() {
+  const content = await getCMSContent("about"); // fetched at build time by default
+  return <AboutContent content={content} />;
 }
 
-// SSR: product pages -- fresh inventory per request
-// pages/products/[id].tsx
-export async function getServerSideProps(context) {
-  const product = await getProduct(context.params.id);
-  return { props: { product } };
+// SSR: product pages -- opt into dynamic rendering
+// app/products/[id]/page.tsx
+export const dynamic = "force-dynamic"; // fetch fresh data per request
+export default async function ProductPage({ params }: { params: { id: string } }) {
+  const product = await getProduct(params.id);
+  return <ProductDetails product={product} />;
 }
+
+// ISR: revalidate periodically without full rebuild
+// app/blog/[slug]/page.tsx
+export const revalidate = 3600; // regenerate at most every hour
 
 // CSR: dashboard -- no SEO, behind auth
-// pages/dashboard.tsx (no getServerSideProps/getStaticProps)
+// app/dashboard/page.tsx
+"use client";
 export default function Dashboard() {
   const { data } = useSWR("/api/dashboard", fetcher);
   return <DashboardUI data={data} />;
 }
 ```
+
+*Note: The Pages Router (`getStaticProps`, `getServerSideProps`) still works but the App Router with Server Components is the current recommended approach. `generateStaticParams` replaces `getStaticPaths` for dynamic SSG routes.*
 
 **Complexity mixing introduces:**
 
@@ -482,7 +486,7 @@ This eliminates the render-blocking round trip for CSS. The browser can render t
 **The execution pipeline:**
 1. **Download** -- Network transfer (compressible with gzip/brotli)
 2. **Parse** -- Convert source text to AST (Abstract Syntax Tree). Cannot be skipped.
-3. **Compile** -- V8 uses a two-tier approach: Sparkplug (fast baseline compiler) produces unoptimized code quickly, then TurboFan (optimizing compiler) recompiles hot functions later. Initial compilation is fast but produces slower code; optimization happens over time.
+3. **Compile** -- V8 uses multiple compilation tiers: Sparkplug (fast baseline compiler) produces unoptimized code quickly, Maglev (mid-tier optimizing compiler) recompiles warm functions, and TurboFan (full optimizing compiler) recompiles hot functions with maximum optimization. Initial compilation is fast but produces slower code; optimization happens progressively over time.
 4. **Execute** -- Run the compiled code. This is where your component trees render, event handlers attach, state initializes.
 
 Steps 2-4 all happen on the **main thread**.
@@ -650,7 +654,7 @@ onCLS(sendToAnalytics);
 
 **SPA navigation handling:**
 
-The web-vitals library handles this automatically with the `reportSoftNavs` option (experimental as of 2025). Without it:
+Soft navigation measurement is still evolving (Chrome's Soft Navigation Heuristics API is experimental). Currently, the web-vitals library reports metrics for the full page session:
 
 - **LCP** finalizes on first user interaction and is only reported for the initial page load
 - **INP** accumulates across the entire page session (including SPA navigations) -- one value per page
@@ -662,10 +666,15 @@ For SPA-specific tracking, you can use `PerformanceObserver` directly:
 // Track CLS per SPA route change
 let currentCLS = 0;
 
+interface LayoutShiftEntry extends PerformanceEntry {
+  hadRecentInput: boolean;
+  value: number;
+}
+
 const observer = new PerformanceObserver((list) => {
-  for (const entry of list.getEntries() as PerformanceEntry[]) {
-    if (!(entry as any).hadRecentInput) {
-      currentCLS += (entry as any).value;
+  for (const entry of list.getEntries() as LayoutShiftEntry[]) {
+    if (!entry.hadRecentInput) {
+      currentCLS += entry.value;
     }
   }
 });
@@ -1022,25 +1031,7 @@ function handleAddToCart(product: Product): void {
 
 **Root cause C: Layout thrashing during interaction (high presentation delay)**
 
-The handler reads and writes layout properties alternately, forcing synchronous layouts.
-
-```typescript
-// BAD: read-write-read-write forces multiple synchronous layouts
-function handleResize(): void {
-  items.forEach((item) => {
-    const width = item.offsetWidth;    // read -> force layout
-    item.style.height = `${width}px`; // write -> invalidate layout
-  });
-}
-
-// GOOD: batch reads then writes
-function handleResize(): void {
-  const widths = items.map((item) => item.offsetWidth); // all reads
-  items.forEach((item, i) => {
-    item.style.height = `${widths[i]}px`; // all writes
-  });
-}
-```
+The handler reads and writes layout properties alternately, forcing synchronous layouts. Fix using the batch-reads-then-writes pattern from Q2 -- separate all DOM reads from all DOM writes to avoid forcing the browser to recalculate layout on every iteration.
 
 **Step 4: Verify the fix**
 
@@ -1509,13 +1500,7 @@ Common findings and fixes:
 
 **How `srcset` and `sizes` work together:**
 
-1. The browser reads `sizes` to determine how wide the image will display. For example, on a 375px phone: `(max-width: 768px) 100vw` = 375px display width.
-2. The browser multiplies by the device pixel ratio. A 2x Retina display needs 750 physical pixels.
-3. The browser picks the smallest source from `srcset` that is at least 750w -- in this case, `hero-800.jpg`.
-
-**Why wrong `sizes` defeats `srcset`:**
-
-If `sizes` is missing or wrong, the browser defaults to `100vw` (the image fills the entire viewport width). On a 1440px desktop with 2x display, the browser calculates it needs 2880px of image data and picks the largest source -- even if your image only displays in a 300px sidebar. The user downloads a 1600w image when a 600w image would have been sufficient. This is a 3-4x bandwidth waste that `srcset` was supposed to prevent.
+As explained in Q10, the browser uses `sizes` to determine the display width, multiplies by the device pixel ratio, and picks the smallest source from `srcset` that covers the needed pixels. If `sizes` is missing or wrong, the browser defaults to `100vw` and downloads a much larger image than necessary -- defeating the entire purpose of `srcset`.
 
 Common mistake: copying `sizes="100vw"` everywhere. If your product grid shows images at `25vw` on desktop, the `sizes` attribute must reflect that:
 
@@ -1583,7 +1568,7 @@ On 3G, a render-blocking 50KB stylesheet takes ~250ms to download after the conn
   </style>
 
   <!-- Full stylesheet loaded asynchronously -->
-  <link rel="preload" href="/css/main.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+  <link rel="stylesheet" href="/css/main.css" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="/css/main.css" /></noscript>
 </head>
 ```

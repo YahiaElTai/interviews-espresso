@@ -379,7 +379,8 @@ NestJS already provides structure. Clean architecture on top of NestJS should ad
 - **`onModuleInit()`** — Called once the module's dependencies have been resolved. Use it for initialization: connect to databases, warm caches, start background workers. Supports `async` — NestJS waits for the promise to resolve before proceeding to the next module.
 - **`onModuleDestroy()`** — Called when the application is shutting down. Use it for cleanup: close database connections, flush logs, stop background jobs.
 - **`onApplicationBootstrap()`** — Called after all modules are initialized. Good for logic that depends on the entire app being ready.
-- **`beforeApplicationShutdown(signal)`** — Called before `onModuleDestroy`. Receives the signal (e.g., `SIGTERM`). Good for stopping the HTTP server from accepting new connections while existing requests drain.
+- **`beforeApplicationShutdown(signal)`** — Called after all `onModuleDestroy()` handlers have completed. Receives the signal (e.g., `SIGTERM`). Good for final cleanup before connections close (e.g., flushing metrics). After this hook completes, `app.close()` closes all connections.
+- **`onApplicationShutdown(signal)`** — Called after connections close (`app.close()` resolves). Last chance for cleanup like removing temp files.
 
 **Why `enableShutdownHooks()` is necessary:**
 
@@ -393,7 +394,7 @@ async function bootstrap() {
 }
 ```
 
-It's disabled by default because the signal listeners interfere with some development tools and testing frameworks. Always enable it in production.
+It's disabled by default because the shutdown hook listeners consume system resources (memory). Running multiple Nest apps in a single Node process — common when running parallel tests with Jest — can trigger Node's excessive listener warnings. Always enable it in production.
 
 **Graceful shutdown with Kubernetes:**
 
@@ -1303,7 +1304,7 @@ export class RequestTrackingInterceptor implements NestInterceptor {
 
 ```typescript
 @Injectable()
-export class AppLifecycle implements BeforeApplicationShutdown, OnModuleDestroy {
+export class AppLifecycle implements OnModuleDestroy, BeforeApplicationShutdown {
   private readonly logger = new Logger('Shutdown');
 
   constructor(
@@ -1311,16 +1312,17 @@ export class AppLifecycle implements BeforeApplicationShutdown, OnModuleDestroy 
     private prisma: PrismaService,
   ) {}
 
-  async beforeApplicationShutdown(signal?: string) {
-    this.logger.log(`Shutdown signal received: ${signal}`);
+  async onModuleDestroy() {
+    // onModuleDestroy fires FIRST after SIGTERM
+    this.logger.log('Shutdown signal received');
     this.shutdownService.startShutdown();
     // Wait for in-flight requests to complete (up to 10s)
     await this.shutdownService.waitForDrain(10_000);
     this.logger.log('All requests drained');
   }
 
-  async onModuleDestroy() {
-    // Close connections after requests are drained
+  async beforeApplicationShutdown(signal?: string) {
+    // beforeApplicationShutdown fires AFTER all onModuleDestroy handlers complete
     await this.prisma.$disconnect();
     this.logger.log('Database connections closed');
   }
@@ -1355,12 +1357,13 @@ spec:
 
 1. K8s sends `preStop` hook -- pod sleeps 5s while K8s updates Service endpoints (removes pod from load balancer)
 2. K8s sends `SIGTERM` -- NestJS `enableShutdownHooks` catches it
-3. `beforeApplicationShutdown` fires -- stops accepting new connections, drains in-flight requests
-4. `onModuleDestroy` fires -- closes database pools, Redis connections, message consumers
-5. Process exits cleanly
-6. If still running after `terminationGracePeriodSeconds` (30s), K8s sends `SIGKILL`
+3. `onModuleDestroy` fires -- stops accepting new connections, drains in-flight requests
+4. `beforeApplicationShutdown` fires -- closes database pools, Redis connections, message consumers
+5. `onApplicationShutdown` fires -- final cleanup after connections close
+6. Process exits cleanly
+7. If still running after `terminationGracePeriodSeconds` (30s), K8s sends `SIGKILL`
 
-**Without proper shutdown:** Database connections are orphaned (the database keeps them open until idle timeout — potentially minutes), in-flight transactions are aborted mid-operation (risking data inconsistency), message queue consumers lose unacknowledged messages, and the next pod startup may hit connection pool limits because the old connections haven't timed out yet.
+**Without proper shutdown:** See question 8 for the consequences — orphaned connections, aborted transactions, lost messages.
 
 </details>
 
@@ -1605,7 +1608,9 @@ describe('UsersController (e2e)', () => {
 - **Use a test database** — either a dedicated test DB (via `.env.test`), Docker container spun up by the test suite, or in-memory SQLite for speed (with Prisma adapter limitations).
 - **Test the HTTP contract**, not internal methods. Assert on status codes, response shape, headers. This catches issues in the full pipeline that unit tests miss — a pipe that strips fields, a guard that rejects, an interceptor that wraps the response.
 
-</details><details>
+</details>
+
+<details>
 <summary>20. Build a custom exception filter that handles domain-specific errors — show an exception filter that catches custom application errors (NotFoundError, ValidationError, AuthorizationError), maps them to appropriate HTTP responses with consistent error format, and explain how exception filters differ from try/catch in controllers</summary>
 
 **1. Define domain errors (framework-agnostic):**
@@ -1729,40 +1734,7 @@ The key benefit: your domain layer throws meaningful errors (`NotFoundError`, `A
 <details>
 <summary>21. Set up a NestJS application with proper module boundaries for a domain-driven structure — show how to organize modules around business domains (users, orders, payments) rather than technical layers, demonstrate how modules communicate through well-defined exports, and what the module dependency graph should look like</summary>
 
-**Domain-driven module structure:**
-
-```
-src/
-  app.module.ts              # Root — imports all domain modules + infra
-  users/
-    users.module.ts
-    users.controller.ts
-    users.service.ts
-    users.repository.ts
-    dto/
-    entities/
-  orders/
-    orders.module.ts
-    orders.controller.ts
-    orders.service.ts
-    orders.repository.ts
-    dto/
-    entities/
-  payments/
-    payments.module.ts
-    payments.service.ts       # No controller — internal module, not HTTP-facing
-    payments.repository.ts
-  notifications/
-    notifications.module.ts
-    notifications.service.ts
-  shared/
-    shared.module.ts          # Cross-cutting: logging, config, common utilities
-    prisma/
-      prisma.module.ts
-      prisma.service.ts
-```
-
-Each module is a vertical slice: controller + service + repository + DTOs for one business domain. This contrasts with the technical-layer approach (`controllers/`, `services/`, `repositories/`) where files from unrelated domains sit together.
+Building on the clean architecture approach from question 7 (organize by domain, not technical layer; each module is a vertical slice), here's how to enforce proper module boundaries at scale.
 
 **Modules communicate through exports — the public API:**
 

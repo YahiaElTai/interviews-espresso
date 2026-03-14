@@ -38,7 +38,7 @@ Redis provides specialized data structures because operating on data server-side
 - **Sorted sets**: O(log N) for insert and rank lookup via a skip list internally. This means leaderboards with millions of entries still return ranks in microseconds.
 - **Lists vs streams**: Lists are simpler but lack consumer groups. Streams add message IDs, acknowledgment, and consumer group semantics — use them when multiple consumers need to process the same stream independently.
 
-**The wrong structure costs you**: Storing a leaderboard as a JSON string means O(N) parsing and full rewrites on every score update. A sorted set makes it O(log N) with atomic `ZINCRBY`. Storing session data as a serialized string means you can't update a single field or set field-level TTLs — a hash gives you granular access.
+**The wrong structure costs you**: Picking the wrong structure means paying for full serialization round trips, O(N) rewrites, and lost atomicity — the performance and memory differences above compound quickly at scale.
 
 </details>
 
@@ -647,14 +647,17 @@ const luaScript = `
   local limit = tonumber(ARGV[3])
 
   redis.call('zremrangebyscore', key, 0, now - window)
-  redis.call('zadd', key, now, now .. ':' .. math.random())
+  redis.call('zadd', key, now, ARGV[4])
   local count = redis.call('zcard', key)
   redis.call('expire', key, math.ceil(window / 1000) + 1)
 
   return count > limit and 1 or 0
 `;
 
-const isLimited = await redis.eval(luaScript, 1, `ratelimit:${userId}`, Date.now(), windowMs, limit);
+// Pass a unique member ID from the client side — Redis Lua's math.random() is
+// deterministic (seeded for replication safety) and can produce duplicate members.
+const memberId = `${Date.now()}:${Math.random()}`;
+const isLimited = await redis.eval(luaScript, 1, `ratelimit:${userId}`, Date.now(), windowMs, limit, memberId);
 ```
 
 </details>
@@ -749,7 +752,9 @@ async function getPlayerRank(playerId: string): Promise<{ rank: number; score: n
 }
 ```
 
-</details><details>
+</details>
+
+<details>
 <summary>13. Implement session storage with automatic expiry — show how to store session data in a Redis hash with TTL, how to extend the TTL on activity, and what happens when Redis evicts sessions under memory pressure with different eviction policies</summary>
 
 **Session storage with Redis hashes:**
@@ -819,7 +824,9 @@ async function destroySession(sessionId: string): Promise<void> {
 
 **Key insight**: If Redis is used solely for sessions, `allkeys-lru` is fine. If Redis is shared with caches, queues, or locks, use `volatile-lru` and ensure only disposable data (sessions, caches) has TTL set — your critical data (locks, counters) should have no TTL and won't be evicted.
 
-</details><details>
+</details>
+
+<details>
 <summary>14. Implement cache stampede prevention for a heavily-read cache key — show the mutex/lock approach (only one request repopulates while others wait or serve stale data), the probabilistic early expiration approach, and explain the tradeoffs between them</summary>
 
 The stampede problem and its dangers were covered in question 6. This answer focuses on production-ready implementations.
@@ -878,7 +885,7 @@ async function getWithStaleOnLock<T>(
 async function setWithRefreshWindow<T>(key: string, data: T, ttlSeconds: number): Promise<void> {
   const entry = {
     data,
-    refreshAt: Date.now() + ttlSeconds * 800, // refresh at 80% of TTL
+    refreshAt: Date.now() + ttlSeconds * 800, // 80% of TTL in ms (seconds * 1000 * 0.8)
   };
   // Physical TTL is 2x the logical TTL — stale data available as fallback
   await redis.set(key, JSON.stringify(entry), 'EX', ttlSeconds * 2);
@@ -1137,7 +1144,7 @@ BullMQ manages job lifecycle using several Redis structures per queue (all prefi
 
 | Redis structure | Purpose |
 |---|---|
-| **List** (`wait`, `active`) | `wait` list holds job IDs ready to be processed. Workers pop from `wait` and push to `active` using `BRPOPLPUSH` (atomic move). This prevents two workers from grabbing the same job. |
+| **List** (`wait`, `active`) | `wait` list holds job IDs ready to be processed. Workers move jobs from `wait` to `active` using Lua scripts that atomically transition job state — this prevents two workers from grabbing the same job. |
 | **Sorted set** (`delayed`) | Delayed jobs are stored with their execution timestamp as the score. A timer checks for jobs whose score is <= now and moves them to `wait`. |
 | **Sorted set** (`prioritized`) | Jobs with priority are stored here. Lower priority number = processed first. |
 | **Hash** (`<job-id>`) | Each job's data, options, progress, and result are stored as a hash. |
@@ -1304,7 +1311,9 @@ const redis = new Redis({
 | Using `redis://` URL without TLS | Credentials sent in plaintext across the network | Use `rediss://` (TLS) in production |
 | Missing `keepAlive` | Connections silently drop behind NAT/load balancer, commands timeout | Set keepAlive to 30s |
 
-</details>---
+</details>
+
+---
 
 ## Experience-Based Questions
 

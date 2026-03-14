@@ -50,18 +50,15 @@ Good: `POST /orders`, `GET /users`
 
 *PATCH can be made idempotent with field masks or JSON Merge Patch, but the spec doesn't guarantee it.
 
-**Status code selection:**
+**Status code selection** (the most commonly tested):
 
 - `200 OK` — successful GET, PUT, PATCH
 - `201 Created` — successful POST that creates a resource (include `Location` header)
 - `204 No Content` — successful DELETE or update with no response body
 - `400 Bad Request` — validation failure, malformed input
-- `401 Unauthorized` — missing or invalid authentication
-- `403 Forbidden` — authenticated but not authorized
+- `401 Unauthorized` — missing or invalid authentication (vs `403 Forbidden` — authenticated but not authorized)
 - `404 Not Found` — resource doesn't exist
 - `409 Conflict` — state conflict (duplicate, version mismatch)
-- `422 Unprocessable Entity` — valid JSON but semantically wrong
-- `429 Too Many Requests` — rate limited
 
 **Why it matters:** When an API follows these conventions, developers can predict behavior without reading docs. GET is always safe to retry. PUT is always idempotent. Caches (CDNs, browsers, proxies) can automatically cache GET responses and invalidate on POST/PUT/DELETE because the semantics are standardized. Breaking these conventions — like making a GET that mutates state — breaks caching and confuses every HTTP-aware tool in the chain.
 
@@ -77,7 +74,7 @@ Good: `POST /orders`, `GET /users`
 | **Client types** | Any (universal) | Browser, mobile (flexible queries) | Service-to-service | Browser (unidirectional push) |
 | **Team size** | Small teams, simple APIs | Larger teams, multiple client teams | Backend teams with strong typing needs | Any |
 | **Latency** | Good (cacheable) | Moderate (no HTTP caching) | Lowest (binary, HTTP/2 multiplexing) | Good for push |
-| **Evolution speed** | Versioning needed | Additive by default | Proto versioning | N/A (transport) |
+| **Evolution speed** | Versioning needed | Additive by default | Proto versioning | N/A — protocol, not API contract |
 | **Tooling maturity** | Highest | High (Apollo, etc.) | Growing (less browser support) | Built into browsers |
 
 **Choose REST when:**
@@ -246,7 +243,9 @@ const items = await db.query(`
 
 **Recommendation:** Use cursor-based for any client-facing list API. Reserve offset for internal admin tools where jumping to page N is genuinely needed.
 
-</details><details>
+</details>
+
+<details>
 <summary>6. Why do partial update strategies matter for API usability and backward compatibility — what are the tradeoffs between PUT (full replacement), PATCH with JSON Merge Patch, and PATCH with field masks, how do output-only and immutable fields affect each approach, and when is one strategy clearly better than the others?</summary>
 
 Partial updates determine how clients communicate "change this, leave that alone." The wrong strategy creates painful backwards compatibility problems when you add new fields.
@@ -347,7 +346,9 @@ GraphQL can return partial data with partial errors — some fields resolve whil
 
 **Key principle:** Keep error formats consistent across your entire API. One structure, one set of conventions. Clients should never have to guess which error format a given endpoint uses.
 
-</details>## GraphQL — Concepts
+</details>
+
+## GraphQL — Concepts
 
 <details>
 <summary>8. Why does GraphQL use a schema and resolver architecture instead of predefined endpoints like REST — how do type definitions, resolvers, and the execution engine work together, and what are the common schema design mistakes that hurt performance?</summary>
@@ -482,7 +483,7 @@ Both compose multiple GraphQL services into a unified API.
 - A gateway fetches schemas from services and merges them at runtime
 - The gateway handles cross-service relationships with custom resolvers
 - Pros: Simple for small service counts
-- Cons: Gateway becomes complex and fragile. Cross-service type resolution is manual. Tight coupling between gateway and services.
+- Cons: Gateway becomes a fragile, tightly-coupled bottleneck that requires manual cross-service type resolution.
 
 **Federation** (Apollo Federation model):
 - Each service owns its types and declares how they extend types from other services using `@key` directives
@@ -821,7 +822,7 @@ Map each validation issue to a specific field path so clients can display errors
 - **SQL injection**: Unsanitized strings concatenated into queries. Use parameterized queries — schema validation alone doesn't prevent this.
 - **NoSQL injection**: MongoDB query operators in user input (`{"$gt": ""}`) bypassing auth checks. Validate that fields are the expected type, not just present.
 - **XSS via stored input**: If user input is stored and later rendered in HTML, malicious `<script>` tags execute in other users' browsers. Sanitize HTML on output or store sanitized versions.
-- **Prototype pollution**: Malicious `__proto__` or `constructor` keys in JSON bodies can modify object prototypes. Zod strips unknown keys when configured with `.strict()` or `.strip()`.
+- **Prototype pollution**: Malicious `__proto__` or `constructor` keys in JSON bodies can modify object prototypes. Zod's default `z.object()` strips unknown keys automatically. Use `.strict()` to reject unknown keys with an error instead.
 - **Denial of service**: Extremely large strings, deeply nested objects, or massive arrays. Set explicit `.max()` limits on all unbounded fields.
 
 </details>
@@ -1353,8 +1354,8 @@ query {
 **Without DataLoader — the N+1 disaster:**
 
 ```typescript
-// Naive resolvers
-const resolvers = {
+// Naive resolvers (before DataLoader)
+const naiveResolvers = {
   Query: {
     posts: (_, { first, after }) => db.posts.findMany({ take: first }),
   },
@@ -1499,24 +1500,26 @@ async function slidingWindowCheck(
   const now = Date.now();
   const windowStart = now - config.windowMs;
 
-  // Atomic pipeline: remove expired entries, count current, add new entry
+  // Step 1: Clean expired entries and count current usage
   const pipeline = redis.pipeline();
   pipeline.zremrangebyscore(key, 0, windowStart);       // remove entries outside window
   pipeline.zcard(key);                                   // count entries in window
-  pipeline.zadd(key, now.toString(), `${now}:${Math.random()}`); // add current request
-  pipeline.pexpire(key, config.windowMs);                // set TTL on the key
 
   const results = await pipeline.exec();
-  const currentCount = results![1][1] as number; // count BEFORE adding current request
+  const currentCount = results![1][1] as number;
 
   const allowed = currentCount < config.maxRequests;
-  const remaining = Math.max(0, config.maxRequests - currentCount - 1);
   const resetAt = Math.ceil((now + config.windowMs) / 1000);
 
-  if (!allowed) {
-    // Remove the entry we just added since the request is rejected
-    await redis.zremrangebyscore(key, now, now);
+  if (allowed) {
+    // Step 2: Only add the entry if within limits
+    await redis.pipeline()
+      .zadd(key, now.toString(), `${now}:${Math.random()}`)
+      .pexpire(key, config.windowMs)
+      .exec();
   }
+
+  const remaining = Math.max(0, config.maxRequests - currentCount - (allowed ? 1 : 0));
 
   return { allowed, remaining, resetAt };
 }

@@ -586,7 +586,7 @@ Three levels of deduplication:
 
 **Time complexity:** O(n log n) for sort + O(n) outer loop * O(n) two-pointer inner = O(n^2). This dominates, so total is O(n^2).
 
-**Can we do better than O(n^2)?** Not in the general case. 3Sum has a well-studied lower bound — no known algorithm solves it faster than O(n^2) (modulo polylog factors). The sorting + two-pointer approach is essentially optimal.
+**Can we do better than O(n^2)?** Not significantly. No known algorithm solves 3Sum faster than O(n^2) for the general case — O(n^2) is considered near-optimal. The sorting + two-pointer approach matches this bound and is the standard interview solution.
 
 </details>
 
@@ -600,26 +600,49 @@ Both approaches start the same way: build a frequency map in O(n).
 Maintain a min-heap of size k. For each unique element, if the heap has fewer than k elements, push. Otherwise, if the current frequency exceeds the heap's minimum, replace it. After processing all elements, the heap contains the top k.
 
 ```typescript
-// Simplified min-heap using array (in interviews, explain the heap logic)
+// Simplified min-heap with sift-up/sift-down (no sort() — real O(log k) operations)
 function topKFrequentHeap(nums: number[], k: number): number[] {
   const freq = new Map<number, number>();
   for (const n of nums) freq.set(n, (freq.get(n) ?? 0) + 1);
 
-  // Min-heap of [element, frequency], sorted by frequency
-  // In a real implementation, use a proper MinHeap class
+  // Min-heap of [element, frequency], ordered by frequency
   const heap: [number, number][] = [];
 
+  function siftUp(i: number): void {
+    while (i > 0) {
+      const parent = Math.floor((i - 1) / 2);
+      if (heap[parent][1] <= heap[i][1]) break;
+      [heap[parent], heap[i]] = [heap[i], heap[parent]];
+      i = parent;
+    }
+  }
+
+  function siftDown(i: number): void {
+    const n = heap.length;
+    while (2 * i + 1 < n) {
+      let smallest = 2 * i + 1;
+      if (smallest + 1 < n && heap[smallest + 1][1] < heap[smallest][1]) smallest++;
+      if (heap[i][1] <= heap[smallest][1]) break;
+      [heap[i], heap[smallest]] = [heap[smallest], heap[i]];
+      i = smallest;
+    }
+  }
+
   for (const [num, count] of freq) {
-    heap.push([num, count]);
-    heap.sort((a, b) => a[1] - b[1]); // simulate heap (interview shortcut)
-    if (heap.length > k) heap.shift(); // remove minimum frequency
+    if (heap.length < k) {
+      heap.push([num, count]);
+      siftUp(heap.length - 1);
+    } else if (count > heap[0][1]) {
+      heap[0] = [num, count]; // replace min
+      siftDown(0);
+    }
   }
 
   return heap.map(([num]) => num);
 }
 ```
 
-Why O(n log k): n elements processed, each heap operation is O(log k). Since k is often much smaller than n, this is significantly better than sorting all elements O(n log n).
+Why O(n log k): n unique elements processed, each heap insert or replace is O(log k) via sift-up/sift-down. Since k is often much smaller than n, this is significantly better than sorting all elements O(n log n).
 
 **Approach 2: Bucket Sort — O(n)**
 
@@ -977,7 +1000,7 @@ function numIslandsBFS(grid: string[][]): number {
       grid[r][c] = '0';
       const queue: [number, number][] = [[r, c]];
       while (queue.length) {
-        const [cr, cc] = queue.shift()!;
+        const [cr, cc] = queue.shift()!; // O(n) — use index-based queue for large grids (see Q12)
         for (const [dr, dc] of dirs) {
           const nr = cr + dr, nc = cc + dc;
           if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] === '1') {
@@ -1081,33 +1104,9 @@ Both problems follow the same DP progression shown conceptually in question 9. H
 
 **Climbing Stairs** — n steps, can climb 1 or 2 at a time. How many distinct ways to reach the top?
 
+The recurrence `f(n) = f(n-1) + f(n-2)` is identical to Fibonacci (question 9), so the same four-step progression applies (naive -> memo -> tab -> space-optimized). The space-optimized version:
+
 ```typescript
-// 1. Naive recursion — O(2^n)
-function climbStairsRec(n: number): number {
-  if (n <= 2) return n;
-  return climbStairsRec(n - 1) + climbStairsRec(n - 2);
-}
-
-// 2. Memoization — O(n) time, O(n) space
-function climbStairsMemo(n: number, memo = new Map<number, number>()): number {
-  if (n <= 2) return n;
-  if (memo.has(n)) return memo.get(n)!;
-  const result = climbStairsMemo(n - 1, memo) + climbStairsMemo(n - 2, memo);
-  memo.set(n, result);
-  return result;
-}
-
-// 3. Tabulation — O(n) time, O(n) space
-function climbStairsTab(n: number): number {
-  if (n <= 2) return n;
-  const dp = new Array(n + 1);
-  dp[1] = 1;
-  dp[2] = 2;
-  for (let i = 3; i <= n; i++) dp[i] = dp[i - 1] + dp[i - 2];
-  return dp[n];
-}
-
-// 4. Space-optimized — O(n) time, O(1) space
 function climbStairs(n: number): number {
   if (n <= 2) return n;
   let prev2 = 1, prev1 = 2;

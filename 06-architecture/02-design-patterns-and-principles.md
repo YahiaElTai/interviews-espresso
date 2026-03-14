@@ -31,8 +31,6 @@
 
 **Why patterns without principles lead to over-engineering:** Without understanding *why* a pattern exists, developers apply them prophylactically — "we might need a Factory here someday" — creating indirection that serves no current purpose. A developer who understands DIP knows that injecting a concrete class is fine when there's only one implementation and no testing need for a mock. A developer who only knows patterns might create an interface, a factory, and a DI binding for a class that will never have a second implementation. The result is more code, more cognitive overhead, and no actual design benefit.
 
-The rule of thumb: principles tell you *when* you have a problem; patterns tell you *how* to solve it. Apply patterns in response to a diagnosed problem, not in anticipation of one.
-
 </details>
 
 <details>
@@ -97,14 +95,8 @@ function Timestamped<T extends Constructor>(Base: T) {
   };
 }
 
-function SoftDeletable<T extends Constructor>(Base: T) {
-  return class extends Base {
-    deletedAt: Date | null = null;
-    softDelete() { this.deletedAt = new Date(); }
-  };
-}
-
-class User extends Timestamped(SoftDeletable(class {})) {
+// Multiple mixins can be composed: class User extends Timestamped(SoftDeletable(class {}))
+class User extends Timestamped(class {}) {
   constructor(public name: string) { super(); }
 }
 ```
@@ -187,14 +179,14 @@ Building plugin systems, abstract factories, or event-driven architectures "for 
 2. **Apply YAGNI aggressively.** Don't build for hypothetical futures. If the requirement doesn't exist today, the code to support it shouldn't either.
 3. **Apply DRY selectively.** Eliminate duplication only when the duplicated code represents the *same concept* (same reason to change) — not just code that happens to look similar. Sandi Metz's rule: "duplication is far cheaper than the wrong abstraction."
 4. **When DRY and KISS conflict, KISS wins.** Duplicated simple code is better than a shared complex abstraction.
-5. **Revisit when the third instance appears.** Two similar pieces might be coincidence. Three is a pattern worth abstracting.
+5. **Apply the Rule of Three** (as covered in question 4) before abstracting duplicated code.
 
 </details>
 
 <details>
 <summary>6. Why is the Singleton pattern considered problematic despite being one of the most well-known patterns — what specific problems does it cause for testing, concurrency, and hidden dependency management, and what alternatives (dependency injection, module-scoped instances) solve the same "single instance" need without Singleton's downsides?</summary>
 
-**The problems:**
+Singleton persists because it's the most intuitive answer to "I need exactly one instance" — simple to understand and implement. But that simplicity masks real costs:
 
 **Testing:** Singletons carry state across tests. One test modifies the singleton, and the next test inherits that state — causing flaky, order-dependent test suites. You can't easily replace a singleton with a mock because consumers access it via a global static method (`getInstance()`), not through an injectable reference.
 
@@ -685,7 +677,7 @@ The rule: **refactor code that changes frequently and is hard to change. Leave s
 
 **Principles for deciding when to abstract:**
 
-1. **The Rule of Three:** Don't abstract until you have three concrete instances of the pattern. Two might be coincidence.
+1. **The Rule of Three** (as covered in question 4): wait for three concrete instances before abstracting.
 2. **Abstract at the point of pain.** If you're struggling to test something, that's a signal for an interface. If you're duplicating code that represents the same concept across three services, that's a signal for extraction.
 3. **Prefer concrete code until forced otherwise.** Direct function calls are easier to read, debug, and refactor than indirect ones. Start concrete; abstract when the concrete code creates a real problem.
 4. **"Could I delete this layer and the code would still be clear?"** If yes, the layer is adding cost without value.
@@ -866,6 +858,7 @@ function Retry(maxRetries = 3) {
           await new Promise((r) => setTimeout(r, 100 * attempt));
         }
       }
+      throw new Error('unreachable');
     };
   };
 }
@@ -1385,6 +1378,8 @@ class Email {
   }
 }
 
+// Note: production Money types should use integer cents or a library like dinero.js
+// to avoid floating point issues (e.g., 0.1 + 0.2 !== 0.3)
 class Money {
   constructor(
     readonly amount: number,

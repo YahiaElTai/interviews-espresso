@@ -345,7 +345,7 @@ These exist because multiple threads share memory, and without coordination, con
 
 Node.js doesn't need OS-level mutexes for JavaScript code (single-threaded), but it *does* need logical coordination for async operations that span multiple `await` points and access shared external state (databases, files, caches).
 
-**Async mutex:**
+**Async mutex (simplified — see Q16 for the complete implementation with `withLock` and cleanup):**
 
 ```typescript
 class AsyncMutex {
@@ -357,7 +357,6 @@ class AsyncMutex {
       this.locked = true;
       return;
     }
-    // Wait until the current holder releases
     return new Promise<void>((resolve) => {
       this.queue.push(resolve);
     });
@@ -378,31 +377,7 @@ Usage pattern: `await mutex.acquire(); try { ... } finally { mutex.release(); }`
 
 **Queue-per-key pattern:**
 
-A single global mutex serializes *everything*, which is too aggressive. Usually you only need to serialize operations on the *same entity* (same user, same order). A queue-per-key gives you fine-grained locking:
-
-```typescript
-class KeyedMutex {
-  private locks = new Map<string, AsyncMutex>();
-
-  async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    let mutex = this.locks.get(key);
-    if (!mutex) {
-      mutex = new AsyncMutex();
-      this.locks.set(key, mutex);
-    }
-    await mutex.acquire();
-    try {
-      return await fn();
-    } finally {
-      mutex.release();
-      // Clean up if no one is waiting
-      if (!mutex.isLocked) this.locks.delete(key);
-    }
-  }
-}
-```
-
-Operations on user A are serialized. Operations on user B are serialized. But A and B run concurrently. This is exactly what row-level locking does in a database, but at the application layer.
+A single global mutex serializes *everything*, which is too aggressive. Usually you only need to serialize operations on the *same entity* (same user, same order). A queue-per-key gives you fine-grained locking — a separate mutex per key. Operations on user A are serialized, operations on user B are serialized, but A and B run concurrently. This is the application-level equivalent of database row-level locking. See Q16 for the complete `KeyedMutex` implementation.
 
 **Why not just use database locks?** Sometimes you should. But application-level mutexes are useful when: (1) the critical section involves multiple external calls (DB + cache + API), (2) you want to prevent the work from even starting rather than blocking at the DB, or (3) you need to coordinate access to non-database resources.
 
@@ -415,25 +390,11 @@ Operations on user A are serialized. Operations on user B are serialized. But A 
 
 **Generation 1: Callbacks**
 
-The original async pattern. Pass a function to be called when the operation completes.
-
-```typescript
-fs.readFile('/path', (err, data) => {
-  if (err) { handleError(err); return; }
-  db.query(data.toString(), (err, result) => {
-    if (err) { handleError(err); return; }
-    // ...nested deeper and deeper
-  });
-});
-```
-
-**Problem it solved:** Enabled non-blocking I/O in a single-threaded environment.
+The original async pattern. Pass a function to be called when the operation completes. Enabled non-blocking I/O in a single-threaded environment.
 
 **Problems it created:**
 - **Callback hell** — nested callbacks become deeply indented and hard to follow.
 - **Error handling fragmentation** — every callback needs its own `if (err)` check. Forgetting one silently swallows errors.
-- **No composition** — combining parallel operations, racing, or sequencing requires manual bookkeeping.
-- **Inversion of control** — you hand your continuation to someone else's function, trusting it will be called exactly once with the right arguments.
 
 **Generation 2: Promises**
 
@@ -453,8 +414,7 @@ readFile('/path')
 - **Guaranteed single resolution** — a Promise resolves or rejects exactly once.
 
 **What you lost/traded:**
-- **Stack traces** — early Promise implementations lost stack context. Errors in `.then()` chains pointed to the Promise internals, not your code. (V8 has improved this with `--async-stack-traces`, but they still have gaps.)
-- **Unhandled rejections** — forgetting `.catch()` silently swallows errors (pre-Node 15 this was a warning; Node 15+ crashes the process by default).
+- **Error visibility** — early Promise implementations lost stack context, and forgetting `.catch()` silently swallowed errors (pre-Node 15 this was a warning; Node 15+ crashes the process by default). V8 has improved stack traces with `--async-stack-traces`, but gaps remain.
 - **Eager execution** — a Promise starts executing the moment it's created. You can't defer execution like you can with a callback-accepting function. This makes cancellation hard.
 - **Verbosity for sequential operations** — chaining `.then()` for sequential steps is more verbose than it needs to be.
 
@@ -622,7 +582,7 @@ Imagine reading a file at 500MB/s from an SSD and writing it to a network socket
 
 **How Node.js streams handle backpressure automatically:**
 
-Node.js streams have a built-in `highWaterMark` (default 16KB for object mode streams, 16KB for byte streams). The mechanism:
+Node.js streams have a built-in `highWaterMark` (default 16 objects for object mode streams, 64 KiB for byte streams). The mechanism:
 
 1. When you `readable.pipe(writable)`, the pipe reads data from the source and writes it to the destination.
 2. `writable.write(chunk)` returns `false` when the internal buffer exceeds `highWaterMark` — this is the backpressure signal.
@@ -826,7 +786,7 @@ const data = await Promise.any([
 - Use `race` when you care about the first *outcome* regardless of success/failure — timeouts, cancellation patterns.
 - Use `any` when you want the first *success* and want to ignore failures — redundant sources, fallback patterns.
 
-See question 17 for full code examples of each combinator with error handling.
+See question 17 for additional real-world scenarios.
 
 </details>
 
@@ -869,16 +829,9 @@ app.post('/withdraw', async (req, res) => {
 });
 ```
 
-**How two requests interleave (the interleaving diagram from question 6 applies here too):**
+**How two requests interleave:**
 
-User has $100. Two requests arrive to withdraw $80:
-
-1. **Request A** executes `SELECT balance` -> gets $100, then yields at `await`.
-2. **Request B** executes `SELECT balance` -> gets $100 (A's UPDATE hasn't happened yet), then yields.
-3. **Request A** checks `100 >= 80` -> true, executes `UPDATE balance = balance - 80`. Balance is now $20.
-4. **Request B** checks `100 >= 80` -> true (using its stale read), executes `UPDATE balance = balance - 80`. Balance is now -$60.
-
-Both withdrawals succeeded. The user withdrew $160 from a $100 account.
+The same check-then-act interleaving from question 6 applies here — two requests read the same stale balance across `await` boundaries, both approve the withdrawal, and the second UPDATE overwrites the first. The result: both withdrawals succeed, and the user withdraws $160 from a $100 account.
 
 **Fix 1: Database-level locking (SELECT FOR UPDATE)**
 

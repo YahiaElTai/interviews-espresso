@@ -385,16 +385,18 @@ PUT /products/_settings
 }
 ```
 
-**Practical pattern for bulk loading**: Disable refresh and replicas during bulk import, then re-enable after:
+**Practical pattern for bulk loading**: Disable refresh and replicas during bulk import, then re-enable after.
+
+Before bulk load:
 
 ```json
-// Before bulk load
 PUT /products/_settings
 { "index": { "refresh_interval": "-1", "number_of_replicas": 0 } }
+```
 
-// ... perform bulk indexing ...
+Perform bulk indexing, then re-enable refresh and replicas:
 
-// After bulk load
+```json
 PUT /products/_settings
 { "index": { "refresh_interval": "1s", "number_of_replicas": 1 } }
 
@@ -593,7 +595,8 @@ PUT /articles
             "lowercase",
             "english_possessive_stemmer",
             "english_stop",
-            "english_stemmer"
+            "english_stemmer",
+            "synonym_filter"
           ]
         }
       },
@@ -609,6 +612,10 @@ PUT /articles
         "english_possessive_stemmer": {
           "type": "stemmer",
           "language": "possessive_english"
+        },
+        "synonym_filter": {
+          "type": "synonym",
+          "synonyms": ["laptop,notebook", "phone,mobile"]
         }
       }
     }
@@ -901,7 +908,6 @@ PUT /products_suggest
   }
 }
 
-// Index with suggestion input
 PUT /products_suggest/_doc/1
 {
   "name": "Wireless Headphones",
@@ -911,7 +917,6 @@ PUT /products_suggest/_doc/1
   }
 }
 
-// Query
 POST /products_suggest/_search
 {
   "suggest": {
@@ -1157,16 +1162,16 @@ POST /products/_search
 }
 ```
 
+Building on the `function_score` example from Q4 (which showed recency decay and popularity boosting), here we add a third signal (rating) and examine how `score_mode` and `boost_mode` combine them.
+
 **How each function works:**
 
-**Recency decay (gauss):**
-- `origin: "now"` -- the ideal date is today.
+**Recency decay (gauss):** Same concept as Q4 -- a gaussian decay centered on "now" with an offset and scale that control the decay curve.
 - `offset: "7d"` -- products within the last 7 days get full score (no decay).
 - `scale: "30d"` -- at 30 days past the offset, the score decays to `decay: 0.5` (50%).
 - A product created yesterday gets ~1.0, 30 days ago gets ~0.5, 90 days ago gets ~0.1.
 
-**Popularity boost (field_value_factor):**
-- `log1p` modifier: `log(1 + 0.5 * sales_count)`. Logarithmic dampening prevents a product with 100,000 sales from completely drowning out one with 1,000.
+**Popularity boost (field_value_factor):** Same `log1p` approach as Q4, dampening high-volume outliers.
 - `missing: 0` -- products without a sales_count field are treated as 0.
 
 **Rating boost:**
@@ -1651,23 +1656,24 @@ async function handleMessage({ message }: EachMessagePayload): Promise<void> {
   }
 }
 
+// Shared producer — initialized once at startup to avoid per-call TCP/auth overhead
+const dlqProducer = kafka.producer();
+
 async function sendToDeadLetter(
   event: ProductEvent,
   error: unknown,
 ): Promise<void> {
-  const producer = kafka.producer();
-  await producer.connect();
-  await producer.send({
+  await dlqProducer.send({
     topic: 'es-indexer-dead-letter',
     messages: [{
       key: String(event.id),
       value: JSON.stringify({ event, error: String(error), timestamp: new Date().toISOString() }),
     }],
   });
-  await producer.disconnect();
 }
 
 async function start(): Promise<void> {
+  await dlqProducer.connect();
   await consumer.connect();
   await consumer.subscribe({ topic: 'myapp.public.products', fromBeginning: true });
   await consumer.run({ eachMessage: handleMessage });
@@ -1733,13 +1739,10 @@ reindexProducts().catch(console.error);
 
 **When CDC isn't worth it:**
 
-| Use CDC when... | Use scheduled reindex when... |
-|----------------|------------------------------|
-| Search freshness matters (< 5 seconds) | Minutes of staleness is acceptable |
-| High change volume (thousands/sec) | Low change volume (hundreds/hour) |
-| You already run Kafka in your stack | Adding Kafka just for search sync is overkill |
-| Multiple consumers need the change stream | Only Elasticsearch needs the data |
-| You need guaranteed ordering | Ordering doesn't matter (full reindex) |
+See Q8 for the full tradeoff comparison table between CDC, scheduled reindex, and dual writes. The key decision factors:
+
+- **Use CDC** when search freshness matters (< 5 seconds), change volume is high, or you already run Kafka.
+- **Use scheduled reindex** when minutes of staleness is acceptable, change volume is low, or adding Kafka just for search sync is overkill.
 
 The operational cost of CDC is significant: Kafka cluster, Debezium connectors, monitoring replication lag, managing connector failures, WAL disk usage. For a product catalog updated a few hundred times per hour where 5-minute search staleness is fine, scheduled reindexing is dramatically simpler and perfectly adequate.
 
@@ -1830,8 +1833,9 @@ POST /products/_forcemerge?max_num_segments=5
 
 **Step 5: Apply fixes for the example**
 
+Before (slow -- leading wildcard + script scoring):
+
 ```json
-// Before: slow (leading wildcard + script scoring)
 {
   "query": {
     "bool": {
@@ -1845,8 +1849,11 @@ POST /products/_forcemerge?max_num_segments=5
     }
   }
 }
+```
 
-// After: fast (match query + field_value_factor)
+After (fast -- match query + field_value_factor):
+
+```json
 {
   "query": {
     "function_score": {

@@ -56,9 +56,7 @@ The shared responsibility model divides security and operational duties between 
 
 - **"Managed means secure"**: RDS/Cloud SQL gives you automated patching, but you still own network access rules. Teams leave databases with public IPs or overly permissive security groups, assuming the managed service is locked down by default.
 - **"Serverless means no IAM"**: Lambda functions still need least-privilege execution roles. Teams often give functions `AdministratorAccess` or `*` permissions because "it's just a function."
-- **"Backups are automatic"**: RDS has automated backups, but you need to configure retention and test restores. Cloud SQL requires you to enable backups explicitly. Neither provider tests your restore process for you.
-- **"Encryption is handled"**: At-rest encryption may be on by default, but in-transit encryption (TLS between services) and encryption key management (customer-managed keys vs provider-managed) are still your responsibility.
-- **"The provider monitors for me"**: Cloud providers give you the tools (CloudWatch, Cloud Monitoring), but setting up alerts, dashboards, and incident response is entirely on you regardless of the service tier.
+- **"Backups are automatic"**: RDS has automated backups, but you need to configure retention and test restores. Cloud SQL requires you to enable backups explicitly. Neither provider tests your restore process for you. Similarly, encryption at rest may be on by default, but in-transit encryption and key management remain your responsibility.
 
 </details>
 
@@ -169,20 +167,14 @@ Internet
 - **NLB/L4**: Raw TCP/UDP workloads (game servers, IoT, custom protocols), extreme throughput requirements, when you need to preserve source IP without proxy protocol, or when you need static IP addresses (useful for allowlisting by clients).
 - **ALB/L7**: HTTP/HTTPS services (most web applications), when you need path-based or host-based routing, WebSocket support, or want to integrate WAF/Cloud Armor. This is the default for almost all web applications.
 
-**Cloud Armor (GCP) and WAF (AWS)**: These are web application firewalls that attach to L7 load balancers. They inspect incoming HTTP requests and block malicious traffic before it reaches your application.
+**Cloud Armor (GCP) and WAF (AWS)**: Web application firewalls that attach to L7 load balancers, inspecting HTTP requests and blocking malicious traffic before it reaches your application. Cloud Armor attaches to GCP's external HTTP(S) LB with IP filtering, geo-blocking, rate limiting, OWASP Top 10 rules, and ML-based DDoS detection. AWS WAF attaches to ALB, CloudFront, or API Gateway with similar capabilities via custom rules or AWS Managed Rules. Critical for any internet-facing service — without them, your app burns compute on malicious requests.
 
-- **Cloud Armor**: Attaches to GCP's external HTTP(S) load balancer. Supports IP allowlisting/denylisting, geo-based filtering, rate limiting, and preconfigured rules for OWASP Top 10 attacks (SQLi, XSS). Also provides adaptive protection using ML for DDoS detection.
-- **AWS WAF**: Attaches to ALB, CloudFront, or API Gateway. Uses rules and rule groups — you can write custom rules or use AWS Managed Rules. Supports rate-based rules, geo-matching, IP sets, and regex pattern matching on request components.
-
-Both are critical for any internet-facing service. Without them, your application handles all traffic including attacks, burning compute on malicious requests.
-
-**SSL termination**: The load balancer decrypts TLS traffic using a certificate you provision (via ACM on AWS or Google-managed certificates on GCP). Backend services receive plain HTTP, avoiding the CPU cost of TLS on every application server. This also centralizes certificate management — you rotate one cert at the LB instead of on every backend. If you need end-to-end encryption (compliance requirements), you can re-encrypt between the LB and backends, but most teams terminate at the LB since traffic within the VPC is on a private network.
+**SSL termination**: The load balancer decrypts TLS using a certificate you provision (ACM on AWS, Google-managed certs on GCP). Backends receive plain HTTP, centralizing certificate management and avoiding per-server TLS overhead. For compliance requiring end-to-end encryption, you can re-encrypt between LB and backends, but most teams terminate at the LB since VPC traffic is already on a private network.
 
 **Health checks**: The load balancer periodically sends requests to backends (HTTP GET on a path like `/health`, or TCP connection checks). If a backend fails the health check threshold (e.g., 3 consecutive failures), the LB stops routing traffic to it. Key configuration decisions:
 
 - **Interval and threshold**: Too aggressive (1s interval, 1 failure) causes flapping during minor GC pauses. Too lenient (30s interval, 5 failures) means serving errors for minutes before unhealthy instances are removed.
-- **Health check path**: Should verify the app is genuinely ready (can reach the database, has loaded configs), not just return 200 from a static route. But also shouldn't be so heavy it adds load — a lightweight check of critical dependencies.
-- **Graceful shutdown**: When deploying, old instances should start failing health checks (or deregister) and drain existing connections before shutting down, otherwise in-flight requests get dropped.
+- **Health check path**: Should verify the app is genuinely ready (can reach the database, has loaded configs), not just return 200 from a static route — but keep it lightweight to avoid adding load. During deployments, ensure old instances deregister and drain connections before shutting down.
 
 </details>
 
@@ -258,7 +250,7 @@ Use **self-hosted** (Kafka, RabbitMQ) when: You need features the managed servic
 
 **Pricing comparison at scale:**
 
-- **Pub/Sub**: Per-message + data volume. $40/TiB ingested + $40/TiB delivered. At very high volumes (billions of messages/day), this gets expensive but includes all infrastructure management.
+- **Pub/Sub**: Per-message + data volume. ~$40/TiB ingested + $40/TiB delivered (approximate base-tier prices — actual pricing includes a free tier of 10 GiB/month and volume discounts at higher tiers). At very high volumes (billions of messages/day), this gets expensive but includes all infrastructure management.
 - **SQS**: $0.40 per million requests (standard). Cheap for moderate volumes, but costs scale linearly with throughput.
 - **Kafka (self-hosted)**: Fixed infrastructure cost (VMs/disks) regardless of message volume. At high throughput, dramatically cheaper per message — but you pay for engineers to operate it. MSK charges per broker-hour + storage, which adds up.
 - **RabbitMQ**: Similar to Kafka — fixed infra cost. Lower throughput ceiling than Kafka but simpler to operate for moderate workloads.
@@ -314,7 +306,6 @@ EventBridge is the right choice when you're building event-driven architectures 
 | DNS | kube-dns managed | CoreDNS managed as add-on (you manage version) |
 | GPU support | Built-in GPU node pools | Install NVIDIA device plugin yourself |
 
-**Bottom line**: GKE is more opinionated and batteries-included — less flexibility but significantly less operational burden. EKS gives you more control and choice of tooling but expects you to assemble and maintain the pieces yourself. For teams without deep Kubernetes expertise, GKE (especially Autopilot) is meaningfully easier to operate.
 
 </details>
 
@@ -380,7 +371,27 @@ aws ec2 create-security-group --group-name db-sg --description "Database tier" -
 aws ec2 authorize-security-group-ingress --group-id $DB_SG --protocol tcp --port 5432 --source-group $APP_SG
 ```
 
-**GCP equivalent approach**: GCP uses VPC firewall rules (applied by network tags) instead of security groups, and Cloud NAT (regional, no separate gateway instance) instead of NAT gateways. Subnets in GCP are regional (span all zones), so you create fewer subnets but use tags and firewall rules for tier isolation.
+**GCP equivalent approach** (this implements the three-tier topology described in question 5): GCP uses VPC firewall rules (applied by network tags) instead of security groups, and Cloud NAT (regional, no separate gateway instance) instead of NAT gateways. Subnets in GCP are regional (span all zones), so you create fewer subnets but use tags and firewall rules for tier isolation.
+
+```bash
+# Allow HTTPS from internet to LB-tagged instances
+gcloud compute firewall-rules create allow-lb-https \
+  --network=app-vpc --direction=INGRESS \
+  --action=ALLOW --rules=tcp:443 \
+  --source-ranges=0.0.0.0/0 --target-tags=lb-tier
+
+# Allow app traffic only from LB tier
+gcloud compute firewall-rules create allow-app-from-lb \
+  --network=app-vpc --direction=INGRESS \
+  --action=ALLOW --rules=tcp:3000 \
+  --source-tags=lb-tier --target-tags=app-tier
+
+# Allow database traffic only from app tier
+gcloud compute firewall-rules create allow-db-from-app \
+  --network=app-vpc --direction=INGRESS \
+  --action=ALLOW --rules=tcp:5432 \
+  --source-tags=app-tier --target-tags=db-tier
+```
 
 **What breaks without a NAT gateway:**
 
@@ -430,27 +441,24 @@ gcloud projects add-iam-policy-binding staging-project-id \
 
 **AWS approach — IAM groups with policies:**
 
+StagingFullAccess policy:
+
 ```json
-// StagingFullAccess policy
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
       "Action": "*",
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": "eu-west-1"
-        }
-      }
+      "Resource": "*"
     }
   ]
 }
 ```
 
+ProdReadOnly policy:
+
 ```json
-// ProdReadOnly policy
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -493,7 +501,7 @@ aws iam attach-role-policy --role-name StagingDevRole \
   --policy-arn arn:aws:iam::policy/StagingFullAccess
 ```
 
-**Least-privilege refinement for AWS**: The `StagingFullAccess` policy above is still too broad — `"Action": "*"` grants everything including IAM changes. Better to use AWS managed policies like `PowerUserAccess` (everything except IAM) or build custom policies scoped to the services your team actually uses. Add a permission boundary to prevent privilege escalation (a developer creating a new role with more permissions than their own).
+**Least-privilege refinement for AWS**: The `StagingFullAccess` policy above is still too broad — `"Action": "*"` grants everything including IAM changes. In a multi-account setup, the staging account itself provides the blast-radius boundary, but you should still use AWS managed policies like `PowerUserAccess` (everything except IAM) or build custom policies scoped to the services your team actually uses. Add a permission boundary to prevent privilege escalation (a developer creating a new role with more permissions than their own).
 
 **Dangerous shortcuts:**
 
@@ -780,14 +788,14 @@ gcloud run deploy my-app \
   --region=us-central1
 ```
 
-**Operational differences:**
+**Operational differences** (for the full compute-layer tradeoff comparison including VMs and functions, see question 3):
 
 | Aspect | GKE | Cloud Run |
 |---|---|---|
-| **Scaling** | HPA based on CPU/memory/custom metrics. You configure min/max replicas, scaling thresholds, and node autoscaler. Scaling takes seconds to minutes (pod scheduling + node provisioning). | Automatic per-request. Scales to zero when idle, scales up instantly on traffic. Concurrency-based (default 80 concurrent requests per instance). No configuration needed beyond min/max instances. |
-| **Logging** | Stdout/stderr from containers go to Cloud Logging automatically (GKE has the logging agent pre-installed). You manage log verbosity, structured logging, and log-based alerting. | Stdout/stderr goes to Cloud Logging with zero setup. Request logs are automatically captured with latency, status codes, and trace IDs. |
-| **Cost model** | Pay for nodes (VMs) whether they're fully utilized or not, plus a cluster management fee ($0.10/hr for Standard). Sustained-use and committed-use discounts help at scale. Cost is predictable but inefficient at low utilization. | Pay per request: CPU-seconds + memory-seconds + request count. Free tier: 2M requests/month. Scales to zero = $0 when idle. Can be expensive at sustained high load compared to reserved GKE nodes. |
-| **Deployment speed** | `kubectl apply` is instant, but rolling updates take time (pod scheduling, health checks, old pod termination). Full rollout: 30s-5min depending on readiness probes and replica count. | Deploy completes in ~30s. Cloud Run provisions new revision, shifts traffic once healthy. Instant rollback by routing traffic to a previous revision. |
+| **Scaling** | HPA + node autoscaler. You configure thresholds and limits. Scaling takes seconds to minutes. | Automatic per-request, concurrency-based. Scales to zero when idle. No config beyond min/max instances. |
+| **Logging** | Stdout/stderr to Cloud Logging automatically (agent pre-installed). You manage structured logging and alerting. | Stdout/stderr to Cloud Logging with zero setup. Request logs auto-captured with latency, status, and trace IDs. |
+| **Cost model** | Pay per node-hour + management fee. Predictable but inefficient at low utilization. Committed-use discounts help. | Pay per CPU-seconds + memory-seconds + request count. $0 when idle. Expensive at sustained high load vs reserved nodes. |
+| **Deployment speed** | Rolling updates: 30s-5min depending on readiness probes and replica count. | ~30s deploy. Instant rollback by routing to a previous revision. |
 
 **When to choose each:**
 
@@ -1128,7 +1136,7 @@ aws ec2 create-launch-template \
     "ImageId": "ami-xxxxx",
     "InstanceType": "t3.medium",
     "SecurityGroupIds": ["'$APP_SG'"],
-    "UserData": "'$(base64 <<< '#!/bin/bash\ndocker run -p 3000:3000 ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/my-app:latest')'"
+    "UserData": "'$(base64 <<< '#!/bin/bash\ndocker run -p 3000:3000 ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/my-app:latest')'"  # UserData must be base64-encoded for the EC2 API
   }'
 
 # 2. Create ASG spanning multiple AZs

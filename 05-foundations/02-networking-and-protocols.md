@@ -426,7 +426,7 @@ Streaming modes are a first-class feature — no WebSocket hack or SSE workaroun
 | **Binary data** | Yes (binary frames) | No (text only, base64 for binary) | Yes (in response body) |
 | **HTTP/2 compatible** | No (requires HTTP/1.1 upgrade) | Yes (multiplexed with other requests) | Yes |
 | **Load balancer** | Needs sticky sessions or WS-aware LB | Standard HTTP — works with any LB | Standard HTTP |
-| **Max connections** | Browser limit ~256 per origin | Browser limit ~6 per origin (HTTP/1.1) | Same as SSE |
+| **Max connections** | No fixed per-origin cap — limited by browser memory and OS file descriptors | Browser limit ~6 per origin (HTTP/1.1) | Same as SSE |
 
 **Operational costs:**
 
@@ -753,6 +753,7 @@ const wsClients = new Set<WebSocket>();
 
 wss.on("connection", (ws) => {
   wsClients.add(ws);
+  ws.on("error", console.error);
 
   ws.send(JSON.stringify({ type: "connected" }));
 
@@ -767,6 +768,7 @@ wss.on("connection", (ws) => {
   });
 
   // Heartbeat to detect dead connections
+  // Custom property — ws types don't include isAlive
   ws.on("pong", () => {
     (ws as any).isAlive = true;
   });
@@ -774,7 +776,7 @@ wss.on("connection", (ws) => {
 });
 
 // Ping clients every 30s to detect broken connections
-setInterval(() => {
+const interval = setInterval(() => {
   for (const ws of wsClients) {
     if (!(ws as any).isAlive) {
       ws.terminate();
@@ -785,6 +787,8 @@ setInterval(() => {
     ws.ping();
   }
 }, 30_000);
+
+wss.on("close", () => clearInterval(interval));
 
 function broadcastWS(event: string, data: unknown) {
   const message = JSON.stringify({ event, data, id: Date.now() });
@@ -818,7 +822,7 @@ function connect() {
 connect();
 ```
 
-**Key differences:**
+**Key differences** (for a detailed feature comparison, see Q10):
 
 | | SSE | WebSocket |
 |---|-----|-----------|

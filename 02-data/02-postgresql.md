@@ -360,7 +360,9 @@ JOIN pg_stat_activity blocking ON blocking.pid = lock.pid
 WHERE NOT bl.granted;
 ```
 
-</details><details>
+</details>
+
+<details>
 <summary>8. Why does PostgreSQL's process-per-connection architecture create a hard ceiling on concurrency -- what resources does each backend process consume, why is max_connections typically set much lower than the number of concurrent application threads, what makes idle-in-transaction sessions particularly dangerous (holding locks, preventing VACUUM, consuming connection slots), and how should you size application-level connection pools independently of whether you use PgBouncer?</summary>
 
 **Process-per-connection architecture:**
@@ -401,7 +403,9 @@ Practical sizing:
 
 **With PgBouncer** (transaction-mode pooling), your application pools can be larger because PgBouncer multiplexes many app connections onto fewer PostgreSQL connections. But you still need application-level pooling to avoid overwhelming PgBouncer itself. PgBouncer handles connection reuse; your app pool handles connection lifecycle and backpressure.
 
-</details><details>
+</details>
+
+<details>
 <summary>9. Why do data type choices matter in PostgreSQL schema design — when should you use timestamptz vs timestamp, text vs varchar(n), identity columns vs serial, why is the money type a trap (and what to use instead for currency), and what are the UUID generation options (gen_random_uuid, uuid-ossp, pgcrypto) and their tradeoffs?</summary>
 
 **timestamptz vs timestamp:**
@@ -774,16 +778,25 @@ WHERE rn = 1;
 
 ROW_NUMBER assigns a unique sequential number within each partition. Even if two sales have the same date, they get different numbers (arbitrary tiebreak). This makes it perfect for "pick exactly one" per group.
 
-**ROW_NUMBER for keyset pagination:**
+**ROW_NUMBER for row-number pagination:**
 
 ```sql
 -- Page through results without OFFSET (which scans and discards)
+-- Note: this still scans and numbers all rows — for true keyset pagination, see below
 SELECT * FROM (
   SELECT *, ROW_NUMBER() OVER (ORDER BY sale_date DESC, id DESC) AS rn
   FROM sales
   WHERE region = 'us-east'
 ) numbered
 WHERE rn BETWEEN 21 AND 40;  -- page 2, 20 per page
+
+-- True keyset pagination: uses the last-seen values to skip directly to the next page
+-- Much faster at deep pages because it doesn't scan preceding rows
+SELECT * FROM sales
+WHERE region = 'us-east'
+  AND (sale_date, id) < ($last_date, $last_id)
+ORDER BY sale_date DESC, id DESC
+LIMIT 20;
 ```
 
 **RANK vs DENSE_RANK — handling ties:**
@@ -1152,8 +1165,9 @@ ALTER TABLE orders ADD COLUMN priority int;
 
 -- Step 2: Backfill in batches to avoid long-running transactions
 -- Do NOT do: UPDATE orders SET priority = 0; (locks 100M rows, generates 100M dead tuples)
-DO $$
-DECLARE batch_size int := 10000;
+-- Use a PROCEDURE (PG 11+) which supports COMMIT inside loops:
+CREATE OR REPLACE PROCEDURE backfill_priority(batch_size int DEFAULT 10000)
+LANGUAGE plpgsql AS $$
 BEGIN
   LOOP
     UPDATE orders SET priority = 0
@@ -1161,9 +1175,11 @@ BEGIN
       SELECT id FROM orders WHERE priority IS NULL LIMIT batch_size
     );
     IF NOT FOUND THEN EXIT; END IF;
-    COMMIT;  -- release locks between batches
+    COMMIT;  -- release locks between batches (only valid in PROCEDURE, not DO blocks)
   END LOOP;
 END $$;
+
+CALL backfill_priority(10000);
 
 -- Step 3: Add the default for new rows
 ALTER TABLE orders ALTER COLUMN priority SET DEFAULT 0;
@@ -1216,7 +1232,7 @@ CREATE INDEX CONCURRENTLY idx_orders_priority ON orders (priority);
 - Cannot run inside a transaction block (no `BEGIN`/`COMMIT`)
 - Takes ~2-3x longer than a regular index build
 - If it fails midway, it leaves an INVALID index that you must drop and retry: `DROP INDEX CONCURRENTLY idx_orders_priority;`
-- Check for invalid indexes: `SELECT * FROM pg_indexes WHERE indexdef LIKE '%INVALID%';`
+- Check for invalid indexes: `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;`
 
 **Summary of what each pattern avoids:**
 
@@ -1226,7 +1242,9 @@ CREATE INDEX CONCURRENTLY idx_orders_priority ON orders (priority);
 | NOT NULL constraint | Full table scan + AccessExclusiveLock | CHECK NOT VALID → VALIDATE → SET NOT NULL | Write downtime during validation |
 | Create index | ShareLock (blocks writes) | CREATE INDEX CONCURRENTLY | Write downtime during build |
 
-</details><details>
+</details>
+
+<details>
 <summary>19. Design a schema using proper PostgreSQL data types — show when to use timestamptz (and why timestamp without time zone is almost always wrong), why text is preferred over varchar(n) for most cases, how identity columns replace serial, and the best approach for UUID primary keys with performance considerations</summary>
 
 The data type rationale was covered in depth in question 9. This answer focuses on a practical schema demonstrating all the correct choices together.
@@ -1300,7 +1318,7 @@ Mitigations:
 2. **Keep bigint as PK internally, expose UUID externally** — internal JOINs use bigint (fast), API consumers see UUIDs (no enumeration).
 
 ```typescript
-// Generate UUIDv7 in Node.js (using the uuid package v9+)
+// Generate UUIDv7 in Node.js (using the uuid package)
 import { v7 as uuidv7 } from 'uuid';
 const id = uuidv7(); // time-ordered, B-tree friendly
 ```
@@ -1423,7 +1441,9 @@ Approach: separate DDL migrations (transactional) from data migrations (non-tran
 
 </details>
 
-## Practical — Production Configuration<details>
+## Practical — Production Configuration
+
+<details>
 <summary>21. Tune autovacuum for a high-write table that's generating dead tuples faster than the default settings can clean up — show the per-table autovacuum settings (autovacuum_vacuum_scale_factor, autovacuum_vacuum_cost_delay), explain how to monitor whether autovacuum is keeping up, and what emergency steps to take when a table is approaching transaction ID wraparound</summary>
 
 The autovacuum fundamentals were covered in question 5. This answer focuses on the practical tuning workflow.

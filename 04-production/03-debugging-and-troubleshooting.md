@@ -31,9 +31,7 @@ Four properties of distributed systems break traditional debugging:
 
 **Clock skew.** Each machine has its own clock, and they drift. When you correlate logs across services using timestamps, a 200ms clock skew can make it look like the effect happened before the cause. This is why distributed tracing (with causal ordering via parent-child spans) matters more than log timestamps for reconstructing event sequences.
 
-**Misleading error locations.** This is the most counterintuitive property. Service A times out calling service B and reports an error. But the real problem is service C — B was waiting on C, which had a connection pool exhaustion. The service that logs the error (A) is healthy. The service that's slow (B) is also healthy — it's just waiting on the actually broken service (C). Traditional debugging says "look at the error logs," which sends you to service A, exactly the wrong place.
-
-**Why the reporting service isn't the broken one:** Errors propagate upstream through dependency chains. The service closest to the user catches the timeout or error first and reports it. But the root cause is often 2-3 hops away. Without distributed tracing showing the full call graph, you'll waste time investigating symptoms instead of causes.
+**Misleading error locations.** This is the most counterintuitive property. Service A times out calling service B and reports an error. But the real problem is service C — B was waiting on C, which had a connection pool exhaustion. The service that logs the error (A) is healthy. The service that's slow (B) is also healthy — it's just waiting on the actually broken service (C). Traditional debugging says "look at the error logs," which sends you to service A, exactly the wrong place. Errors propagate upstream through dependency chains — the service closest to the user catches the timeout first and reports it, but the root cause is often 2-3 hops away. Without distributed tracing showing the full call graph, you'll waste time investigating symptoms instead of causes.
 
 </details>
 
@@ -133,11 +131,11 @@ The useful entry has: **what** happened (payment failed), **who** was affected (
 <details>
 <summary>5. What is the difference between correlation IDs and distributed tracing, why do you need both in a microservices architecture, and what does each one tell you during debugging that the other cannot?</summary>
 
+**Why you need both:** Correlation IDs and distributed tracing solve different halves of the debugging problem. Correlation IDs give you the detailed narrative — what happened, in what context, with what data. Traces give you the topology and timing — which service called which, how long each step took, and where latency was introduced. Neither alone tells the full story.
+
 **Correlation IDs** are simple string identifiers (usually UUIDs) attached to every log entry for a request. They let you filter all logs across all services for a single request: `correlationId:"abc-123"` returns every log line that request produced, in every service it touched. They're a grouping mechanism — they tell you "these events belong together."
 
-**Distributed tracing** (OpenTelemetry, Jaeger, etc.) models the request as a tree of **spans** — each span represents a unit of work (an HTTP call, a database query, a queue publish) with a start time, duration, status, and parent-child relationships. Traces give you the **call graph** and **timing**: which service called which, how long each step took, and where latency was introduced.
-
-**Why you need both:**
+**Distributed tracing** (OpenTelemetry, Jaeger, etc.) models the request as a tree of **spans** — each span represents a unit of work (an HTTP call, a database query, a queue publish) with a start time, duration, status, and parent-child relationships.
 
 | | Correlation ID | Distributed Trace |
 |---|---|---|
@@ -214,7 +212,7 @@ With RabbitMQ, SQS, or Kafka, you store the `traceparent` in message headers/att
 
 ```typescript
 // Leaky: the callback keeps `largeData` alive as long as the timer exists
-function processRequest(req: Request) {
+async function processRequest(req: Request) {
   const largeData = await fetchHugePayload(); // 50MB
   const summary = summarize(largeData);
 
@@ -711,25 +709,12 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
 **Logger that automatically includes the correlation ID:**
 
 ```typescript
-// logger.ts
+// logger.ts — uses pino's mixin option (idiomatic way to enrich every log entry)
 import pino from "pino";
 import { getCorrelationId } from "./context";
 
-const baseLogger = pino();
-
-export const logger = new Proxy(baseLogger, {
-  get(target, prop) {
-    const method = target[prop as keyof typeof target];
-    if (typeof method === "function" && ["info", "warn", "error", "debug"].includes(prop as string)) {
-      return (obj: Record<string, unknown> | string, ...args: unknown[]) => {
-        const enriched = typeof obj === "string"
-          ? { correlationId: getCorrelationId(), msg: obj }
-          : { correlationId: getCorrelationId(), ...obj };
-        return (method as Function).call(target, enriched, ...args);
-      };
-    }
-    return method;
-  },
+export const logger = pino({
+  mixin: () => ({ correlationId: getCorrelationId() }),
 });
 ```
 
@@ -828,8 +813,8 @@ import fs from "node:fs";
 // Protected debug endpoint — never expose publicly
 app.get("/debug/heap-snapshot", authMiddleware, (req, res) => {
   const filename = `/tmp/heap-${Date.now()}.heapsnapshot`;
-  const snapshotStream = v8.writeHeapSnapshot(filename);
-  res.json({ file: snapshotStream });
+  const snapshotFile = v8.writeHeapSnapshot(filename);
+  res.json({ file: snapshotFile });
 });
 ```
 
@@ -905,25 +890,7 @@ This tells you: a global `Map` is holding `UserSession` objects that are never r
 
 **Generating the flame graph:**
 
-```bash
-# Option 1: clinic flame (recommended — easiest to use, interactive output)
-npx clinic flame -- node dist/server.js
-# Send traffic with a load testing tool:
-npx autocannon -c 50 -d 30 http://localhost:3000/api/orders
-# Press Ctrl+C — clinic generates an interactive HTML flame graph
-
-# Option 2: 0x (lightweight, good for quick profiling)
-npx 0x dist/server.js
-# Send traffic, then Ctrl+C — generates a flame graph in a .0x/ directory
-
-# Option 3: V8 built-in profiler (no extra dependencies)
-node --prof dist/server.js
-# Send traffic, then stop the process
-node --prof-process isolate-*.log > profile.txt
-# This gives a text profile, not a visual flame graph — less useful but works anywhere
-```
-
-For production profiling without restarting the process, connect Chrome DevTools (as described in question 16) and use the CPU Profiler tab to record a profile, then view it as a flame chart.
+Use any of the tools from question 8 (`clinic flame`, `0x`, or `node --prof`). For production profiling without restarting the process, connect Chrome DevTools (as described in question 16) and use the CPU Profiler tab to record a profile, then view it as a flame chart. Send traffic with a load testing tool like `autocannon` while profiling.
 
 **Reading the flame graph — identifying specific bottlenecks:**
 
@@ -981,12 +948,7 @@ ORDER BY total_exec_time DESC
 LIMIT 10;
 ```
 
-**Which columns matter most:**
-- `total_exec_time` — the cumulative cost. This is the primary sort column because it captures both frequency and latency.
-- `mean_exec_time` — average per call. High mean + low calls = occasional slow query. Low mean + high calls = death by a thousand cuts.
-- `calls` — how often it runs. A 2ms query called 10M times matters more than a 5s query called twice.
-- `rows` — if a query returns 100K rows per call, the app might be fetching more data than it needs.
-- `shared_blks_read` — high values indicate cache misses hitting disk. Ratio of `shared_blks_read / (shared_blks_hit + shared_blks_read)` gives the cache miss rate.
+The key columns and what they reveal are covered in question 9. Sort by `total_exec_time` (cumulative impact), then look at `mean_exec_time`, `calls`, and `shared_blks_read` to understand the pattern.
 
 **Step 2: Take the worst query and run EXPLAIN ANALYZE.**
 
@@ -1528,9 +1490,9 @@ On March 15, 2024, a database migration adding a NOT NULL column with a DEFAULT 
 
 ### Root Cause
 
-The migration `ALTER TABLE orders ADD COLUMN priority VARCHAR(10) NOT NULL DEFAULT 'normal'` acquired an ACCESS EXCLUSIVE lock on the `orders` table (52M rows). In PostgreSQL versions before 11, adding a column with a DEFAULT rewrites the entire table. In PostgreSQL 11+, the DEFAULT is stored in the catalog and the column is added instantly — **but the NOT NULL constraint still requires a full table scan to validate**, and the ACCESS EXCLUSIVE lock is held for the duration.
+The migration `ALTER TABLE orders ADD COLUMN priority VARCHAR(10) NOT NULL DEFAULT 'normal'` acquired an ACCESS EXCLUSIVE lock on the `orders` table (52M rows). The database was running **PostgreSQL 10**, where adding a column with a DEFAULT rewrites the entire table — every row must be physically updated with the new default value, and the ACCESS EXCLUSIVE lock is held for the entire rewrite duration. (In PostgreSQL 11+, this operation would be near-instant because the default is stored in the catalog and the NOT NULL constraint is satisfied by the catalog-stored default, with no table rewrite needed.)
 
-On a 52M-row table, this validation took longer than the API's database connection timeout (30s), causing all queries to the `orders` table to queue behind the lock and eventually time out.
+On a 52M-row table running PostgreSQL 10, this rewrite took longer than the API's database connection timeout (30s), causing all queries to the `orders` table to queue behind the lock and eventually time out.
 
 ### Contributing Factors
 

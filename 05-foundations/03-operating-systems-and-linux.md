@@ -339,7 +339,14 @@ A VM runs a complete separate kernel on virtualized hardware. The attack surface
 - **Misconfigured user namespace** — Running as root inside the container without user namespace remapping means you're root on the host if you can escape the mount namespace.
 - **`/proc` and `/sys` exposure** — Writable cgroup files via `/sys/fs/cgroup` have been used to escape containers.
 
-**Defense in depth:** Use non-root containers, enable user namespace remapping, apply seccomp profiles to restrict syscalls, use AppArmor/SELinux, never run `--privileged`, never mount the Docker socket, and keep the host kernel patched.
+**Defense in depth:**
+- Use non-root containers
+- Enable user namespace remapping
+- Apply seccomp profiles to restrict syscalls
+- Use AppArmor/SELinux
+- Never run `--privileged`
+- Never mount the Docker socket
+- Keep the host kernel patched
 
 </details>
 
@@ -377,8 +384,7 @@ resources:
 - This is scoped and predictable — it's the whole point of setting memory limits.
 
 **Host runs out of memory (no per-container limits or limits sum to more than host RAM):**
-- The global OOM killer activates. It scores *all* processes on the host and kills the one with the highest `oom_score`.
-- This can kill any container on the host, or even system processes. It's unpredictable and cascading.
+- The global OOM killer activates, using the scoring mechanism covered in question 4. It can kill any container on the host, or even system processes — unpredictable and cascading.
 - This is why Kubernetes requires memory limits — without them, one misbehaving pod can take out unrelated workloads.
 
 **What happens when limits are too aggressive:**
@@ -536,11 +542,11 @@ This is fundamentally different from OS threads in languages like Java or C++, w
 
 **Go's goroutine model:**
 
-Goroutines are user-space "green threads" — lightweight (2-8 KB initial stack, grows dynamically) and multiplexed onto a small pool of OS threads by Go's runtime scheduler (M:N scheduling). You can spawn millions of goroutines. They share memory directly (like OS threads) and synchronize via channels or mutexes.
+Goroutines are user-space "green threads" — lightweight (2 KB initial stack, grows dynamically up to 1 GB by default) and multiplexed onto a small pool of OS threads by Go's runtime scheduler (M:N scheduling). You can spawn millions of goroutines. They share memory directly (like OS threads) and synchronize via channels or mutexes.
 
 | Dimension | Node.js worker threads | OS threads (Java/C++) | Go goroutines |
 |---|---|---|---|
-| **Weight** | Heavy — full V8 isolate per thread (~2-10 MB) | Medium — ~1-8 MB stack each | Light — ~2-8 KB, dynamically sized |
+| **Weight** | Heavy — full V8 isolate per thread (~2-10 MB) | Medium — ~1-8 MB stack each | Light — ~2 KB initial, grows dynamically |
 | **Memory sharing** | No shared JS heap; `SharedArrayBuffer` for raw bytes | Full heap sharing | Full heap sharing |
 | **Scheduling** | OS-scheduled (1:1) | OS-scheduled (1:1) | Runtime-scheduled (M:N) |
 | **Communication** | Message passing (structured clone) | Shared memory + locks | Channels (preferred) or shared memory + locks |
@@ -693,7 +699,7 @@ The kernel gives PID 1 two unique duties that no other process has:
 
 If your Dockerfile has `CMD ["node", "server.js"]`, Node.js runs as PID 1. Problems:
 
-- **SIGTERM is ignored** — Node.js doesn't register a default SIGTERM handler when running as PID 1. Kubernetes sends SIGTERM, nothing happens, waits 30 seconds, sends SIGKILL. Every deployment has a 30-second delay with no graceful shutdown (as covered in question 7).
+- **SIGTERM is ignored** — When running as PID 1, the Linux kernel only delivers signals for which the process has explicitly registered a handler. Node.js doesn't register a SIGTERM handler by default, so SIGTERM is silently ignored. Kubernetes sends SIGTERM, nothing happens, waits 30 seconds, sends SIGKILL. Every deployment has a 30-second delay with no graceful shutdown (as covered in question 7).
 - **Zombies accumulate** — If your Node.js app spawns child processes (e.g., `child_process.exec`), it needs to reap them. Node.js does call `wait()` for its direct children, but orphaned grandchildren aren't reaped.
 
 **The fix — use a lightweight init:**

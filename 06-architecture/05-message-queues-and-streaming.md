@@ -517,7 +517,7 @@ const kafka = new Kafka({
 
 const producer = kafka.producer({
   idempotent: true,           // prevents duplicate messages on producer retries
-  maxInFlightRequests: 5,     // safe with idempotent=true (Kafka handles ordering)
+  maxInFlightRequests: 5,     // safe with idempotent=true (up to 5 allowed); must be 1 for transactional producers
 });
 
 await producer.connect();
@@ -1318,14 +1318,18 @@ aws sqs set-queue-attributes --queue-url $QUEUE_URL \
 ```
 
 ```typescript
-// Extend visibility timeout during long processing
-async function processWithHeartbeat(message: SQS.Message): Promise<void> {
+// Extend visibility timeout during long processing (AWS SDK v3)
+import { SQSClient, ChangeMessageVisibilityCommand, Message } from '@aws-sdk/client-sqs';
+
+const sqs = new SQSClient({});
+
+async function processWithHeartbeat(message: Message): Promise<void> {
   const heartbeat = setInterval(async () => {
-    await sqs.changeMessageVisibility({
+    await sqs.send(new ChangeMessageVisibilityCommand({
       QueueUrl: QUEUE_URL,
       ReceiptHandle: message.ReceiptHandle!,
       VisibilityTimeout: 60, // extend by 60s
-    }).promise();
+    }));
   }, 20_000); // extend every 20s
 
   try {
@@ -1349,10 +1353,12 @@ Fix:
 ```typescript
 const consumer = kafka.consumer({
   groupId: 'order-processing-group',
-  maxPollInterval: 300000,    // increase if processing is legitimately slow
-  sessionTimeout: 30000,
-  // Use cooperative assignor to minimize rebalance disruption
-  partitionAssigners: [Kafka.CooperativeStickyAssigner],
+  sessionTimeout: 30000,      // increase if consumers are slow to heartbeat
+  heartbeatInterval: 3000,    // send heartbeats frequently to avoid being kicked
+  // Note: Kafka's max.poll.interval.ms is not exposed in KafkaJS — session timeout
+  // and heartbeat interval are the knobs for detecting slow consumers.
+  // Cooperative sticky assignment is a Kafka protocol feature not available in KafkaJS;
+  // KafkaJS uses round-robin by default. The Java client supports CooperativeStickyAssignor.
 });
 
 // Reduce batch size so each poll completes faster

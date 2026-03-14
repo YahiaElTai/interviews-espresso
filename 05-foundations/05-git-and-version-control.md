@@ -37,8 +37,7 @@ Git stores four types of objects:
 
 - **Blob** — file contents (no filename, just content)
 - **Tree** — a directory listing, mapping filenames to blob SHAs (and subtrees)
-- **Commit** — points to a tree (the project snapshot), plus metadata: author, message, timestamp, and parent commit(s)
-- **Tag** — a named pointer to a commit (for annotated tags)
+- **Commit** — points to a tree (the project snapshot), plus metadata: author, message, timestamp, and parent commit(s). (Annotated tags are a fourth object type — named pointers to commits.)
 
 **Commits as a DAG:**
 
@@ -263,8 +262,8 @@ When you `reset --hard` or a rebase goes wrong, the commits aren't deleted — t
 These defaults are configurable:
 
 ```bash
-git config gc.reflogExpire 90.days
-git config gc.reflogExpireUnreachable 30.days
+git config gc.reflogExpire "90 days"
+git config gc.reflogExpireUnreachable "30 days"
 ```
 
 **Key limitation:** The reflog is local only. It's not pushed to remotes. If you clone a fresh copy, there's no reflog history. This is why having a remote as a backup matters — even if reflog is gone locally, the remote may still have the commits on a branch.
@@ -379,9 +378,8 @@ git clone --filter=blob:none <repo-url>
 Submodules embed one Git repo inside another, each with its own `.git`. The problems:
 
 - **Version pinning is manual** — the parent repo pins a specific SHA of each submodule. Updating means committing new SHA pins, which is an extra step developers forget.
-- **Broken workflows** — `git clone` doesn't fetch submodules by default (`--recurse-submodules` needed). New team members constantly hit "empty directory" issues.
+- **Broken clone workflow** — `git clone` doesn't fetch submodules by default (`--recurse-submodules` needed). New team members constantly hit "empty directory" issues.
 - **Atomic cross-package changes are impossible** — changing code in the parent and a submodule requires two separate commits in two repos, coordinated manually.
-- **CI complexity** — every pipeline needs submodule init/update steps, and caching is harder.
 
 Submodules make sense for truly independent repos you consume as a dependency (e.g., a vendored library). For a monorepo where packages change together frequently, they add friction without solving the core performance issues that sparse/partial clone handle better.
 
@@ -680,7 +678,7 @@ git status
 
 **Step 2: Understand the conflict (diff3 format)**
 
-With `git config --global merge.conflictstyle diff3` enabled:
+With diff3 enabled (see Q10), the conflict shows three sections:
 
 ```typescript
 // src/services/user.ts
@@ -697,7 +695,7 @@ async function getUser(id: number): Promise<User | null> {
 }
 ```
 
-Reading this: the base had `id: number` with a `Promise<User>` return. HEAD changed the param to `string`. Feature branch kept `number` but changed the return type to `User | null` and added null handling. The correct resolution combines both — `id: string` AND `User | null`:
+The base had `id: number` with `Promise<User>`. HEAD changed the param to `string`. Feature branch changed the return to `User | null`. The correct resolution combines both:
 
 ```typescript
 async function getUser(id: string): Promise<User | null> {
@@ -776,27 +774,27 @@ git show :3:src/config.ts  # theirs (feature-branch)
 
 **Sparse checkout setup:**
 
-Sparse checkout was introduced conceptually in question 9. Here's the full setup:
+The basic sparse checkout commands were shown in Q9. For monorepo development, combine sparse checkout with partial clone and manage context switching between packages:
 
 ```bash
-# Clone with sparse checkout enabled (downloads history but no files initially)
+# Initial setup: partial clone + sparse checkout (fast clone, minimal working tree)
 git clone --sparse --filter=blob:none https://github.com/org/monorepo.git
 cd monorepo
 
-# Check out only the packages you work on + shared code
+# Set your working packages
 git sparse-checkout set packages/backend packages/shared configs/
 
-# Verify what's checked out
-git sparse-checkout list
-# packages/backend
-# packages/shared
-# configs/
-
-# Add another package later
+# Switch context: start working on auth package too
 git sparse-checkout add packages/auth
 
-# Root files (package.json, tsconfig.json, etc.) are always included
+# Check what you currently have checked out
+git sparse-checkout list
+
+# Drop a package you're done with (blobs stay cached locally)
+git sparse-checkout set packages/auth packages/shared configs/
 ```
+
+Root files (`package.json`, `tsconfig.json`, etc.) are always included. Blobs for non-checked-out paths are fetched lazily only when accessed (e.g., via `git log -p` or `git blame`).
 
 **CODEOWNERS file:**
 
@@ -955,6 +953,8 @@ This makes `--force-with-lease` reject the push if the remote has commits you ha
 
 **GitHub branch protection setup (Settings > Branches > Branch protection rules):**
 
+The rules themselves were covered conceptually in Q8. Here's the exact UI configuration:
+
 ```
 Branch name pattern: main
 
@@ -967,12 +967,9 @@ Branch name pattern: main
     Required checks: ci/tests, ci/lint
 
 [x] Do not allow force pushes
-
 [x] Do not allow deletions
-
 [x] Require linear history          (optional — enforces squash or rebase merge)
-
-[x] Include administrators          (critical — no one should bypass these)
+[x] Include administrators
 ```
 
 **GitLab equivalent (Settings > Repository > Protected branches):**
@@ -1112,7 +1109,6 @@ jobs:
 ```
 
 ```json
-// .commitlintrc.json
 {
   "extends": ["@commitlint/config-conventional"],
   "rules": {

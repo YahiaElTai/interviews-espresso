@@ -637,17 +637,11 @@ If a service stores state in memory (sessions, caches, counters), any specific r
 
 **Where to externalize session state:**
 
-| Approach | Pros | Cons |
-|---|---|---|
-| **Redis** | Fast (sub-ms reads), built-in TTL, supports complex data structures | Additional infrastructure, network hop per request, Redis itself is a SPOF unless clustered |
-| **Database** | Already exists, durable, no new infrastructure | Slower than Redis, adds load to the database, needs cleanup of expired sessions |
-| **Signed tokens (JWT)** | No server-side storage at all, no network hop, scales infinitely | Can't revoke individual tokens (without a blacklist, which is server-side state), token size grows with claims, sensitive data must not be in the payload |
-
-**Practical recommendation:**
-
-- **JWTs for authentication**: Stateless auth tokens containing user ID, roles, expiry. Keep them small. Use short expiry + refresh tokens.
-- **Redis for session data**: Shopping carts, wizard progress, temporary user preferences. Anything that needs to be read/written frequently and doesn't belong in a JWT.
-- **Database for durable state**: User profiles, settings, anything that must survive Redis restarts.
+| Approach | Pros | Cons | When to use |
+|---|---|---|---|
+| **Redis** | Fast (sub-ms reads), built-in TTL, supports complex data structures | Additional infrastructure, network hop per request, Redis itself is a SPOF unless clustered | Best for frequently read/written session data: shopping carts, wizard progress, temporary preferences |
+| **Database** | Already exists, durable, no new infrastructure | Slower than Redis, adds load to the database, needs cleanup of expired sessions | Best for durable state that must survive restarts: user profiles, settings |
+| **Signed tokens (JWT)** | No server-side storage at all, no network hop, scales infinitely | Can't revoke individual tokens (without a blacklist, which is server-side state), token size grows with claims, sensitive data must not be in the payload | Best for authentication: stateless auth tokens with user ID, roles, expiry. Use short expiry + refresh tokens |
 
 **Subtle statefulness teams miss:**
 
@@ -941,7 +935,7 @@ class ProductPageService {
 }
 ```
 
-**Degradation priority (what to shed first):**
+**Degradation priority (using the shedding priorities from Q6):**
 
 | Priority | Shed when... | Feature | Fallback |
 |---|---|---|---|
@@ -963,6 +957,8 @@ class ProductPageService {
 
 <details>
 <summary>15. Implement a backpressure mechanism in a Node.js service that consumes from a message queue — show how you'd use queue depth as a signal to slow down consumption, how to propagate backpressure upstream (e.g., returning HTTP 429 or pausing consumers), and what load shedding looks like when the queue hits a critical depth threshold</summary>
+
+Implementing the backpressure concepts from Q10 — using queue depth thresholds to signal overload and propagate pressure upstream:
 
 ```typescript
 import { EventEmitter } from 'events';
@@ -1182,6 +1178,8 @@ class IngestController {
 
 <details>
 <summary>16. Set up read replica routing in a Node.js/TypeScript application — show how you'd configure the database client to send writes to the primary and reads to replicas, handle the replication lag problem for read-after-write scenarios (e.g., user creates a record then immediately views it), and explain the tradeoffs between routing strategies (sticky connections, primary fallback, causal consistency tokens)</summary>
+
+Building on the routing concept from Q4, here's a production-ready implementation that adds explicit read options, service-layer write tracking, and auto-detection of query type:
 
 ```typescript
 import { Pool, PoolConfig } from 'pg';
@@ -1434,7 +1432,7 @@ const pool = new Pool({
   max: 4,                    // small pool — 50 instances × 4 = 200
   idleTimeoutMillis: 30_000, // release idle connections
   connectionTimeoutMillis: 5_000, // fail fast if no connection available
-  statement_timeout: 10_000, // kill slow queries
+  statement_timeout: 10_000, // PostgreSQL session parameter, passed through by pg
 });
 
 // Always use pool.query() or properly release clients
@@ -1529,10 +1527,10 @@ spec:
 **Why the `preStop: sleep 5`:**
 
 When Kubernetes decides to terminate a pod, two things happen *concurrently*:
-1. SIGTERM is sent to the container
+1. The preStop hook begins executing
 2. The pod is removed from the Service endpoints (load balancer stops routing to it)
 
-The endpoint removal is asynchronous — it takes a few seconds for kube-proxy/iptables/envoy to update. During that window, the load balancer may still send new requests to the terminating pod. The `preStop: sleep 5` delays SIGTERM delivery, giving the endpoint removal time to propagate. Without it, the pod stops accepting requests before the load balancer stops sending them, causing 502s.
+The preStop hook must complete before SIGTERM is sent to the container. The endpoint removal is asynchronous — it takes a few seconds for kube-proxy/iptables/envoy to update. During that window, the load balancer may still send new requests to the terminating pod. The `preStop: sleep 5` delays SIGTERM delivery, giving the endpoint removal time to propagate. Without it, the pod stops accepting requests before the load balancer stops sending them, causing 502s.
 
 **Application-level graceful shutdown:**
 
@@ -1601,8 +1599,8 @@ server.listen(3000);
 **The full shutdown sequence, step by step:**
 
 ```
-Time 0s:  Kubernetes sends preStop hook + SIGTERM concurrently
-          Kubernetes starts removing pod from Service endpoints
+Time 0s:  Kubernetes begins executing the preStop hook.
+          Concurrently, Kubernetes starts removing the pod from Service endpoints.
 
 Time 0-5s: preStop sleep runs. The application hasn't received SIGTERM yet.
            Load balancer endpoint removal propagates across the cluster.
@@ -2111,15 +2109,7 @@ B retries failed/timed-out calls to C 3 times. Each retry waits up to 5s. So a s
 
 B is now slow because its connections to C are saturated. A's calls to B start timing out. A retries 3 times. Each retry to B generates up to 4 calls to C.
 
-**Load multiplication:**
-```
-1 user request to A
-→ A tries B: 1 original + 3 retries = 4 calls to B
-→ Each B call tries C: 1 original + 3 retries = 4 calls to C
-→ Total calls to C: 4 × 4 = 16 calls to C from 1 user request
-```
-
-At 100 RPS to A, C receives up to 1,600 RPS — a 16x amplification. C was already struggling at normal load; 16x load guarantees it collapses entirely.
+**Load multiplication:** With 3 retries at each layer, this produces the 4×4 = 16x amplification covered in Q8. At 100 RPS to A, C receives up to 1,600 RPS. C was already struggling at normal load; 16x load guarantees it collapses entirely.
 
 **T+3 min: Full cascade**
 

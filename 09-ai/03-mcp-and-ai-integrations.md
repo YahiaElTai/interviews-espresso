@@ -36,9 +36,9 @@ MCP (Model Context Protocol) is an open protocol that standardizes how LLM appli
 - **Tools** — Executable actions the LLM can invoke. These are the function-calling interface — the model decides when to call a tool, passes arguments matching a JSON Schema, and receives results. Tools have side effects (create a ticket, run a query, send an email).
 - **Prompts** — Reusable prompt templates that servers expose. These are pre-written prompt structures the user or client can invoke, often with parameters. They help standardize how the LLM interacts with a particular domain (e.g., a "summarize-issue" prompt template for a Jira server).
 
-**How they fit together:** The client connects to one or more servers at startup, discovers their tools/resources/prompts via `list` methods, and presents them to the LLM. When the LLM needs data, it can request resources. When it needs to take action, it calls tools. Prompts provide guided interaction patterns.
+**How they fit together:** The client connects to servers at startup, discovers their tools/resources/prompts via `list` methods, and presents them to the LLM. The LLM requests resources for context and calls tools for actions. Prompts provide guided interaction patterns.
 
-**Why a protocol?** The same reason HTTP beat custom TCP protocols for the web. Bespoke integrations don't compose — if you build a Jira integration for Claude and a different one for GPT, you've doubled the work. A protocol means tool authors build once, and every AI client benefits. It also enables an ecosystem of shared servers that anyone can install and use.
+**Why a protocol?** Same reason HTTP beat custom TCP protocols for the web — bespoke integrations don't compose. A protocol means tool authors build once and every AI client benefits, enabling an ecosystem of shared servers.
 
 </details>
 
@@ -733,52 +733,7 @@ Log `promptVersion` because prompt changes are the most common cause of quality 
 
 **Tracing multi-step agents:**
 
-An agent that makes 5 tool calls generates 6+ LLM API calls (initial + one after each tool result). Use distributed tracing with a shared `traceId`:
-
-```typescript
-import { trace, context, SpanKind } from '@opentelemetry/api';
-
-const tracer = trace.getTracer('llm-agent');
-
-async function runAgent(input: string, traceId: string) {
-  return tracer.startActiveSpan('agent-run', { kind: SpanKind.INTERNAL }, async (parentSpan) => {
-    parentSpan.setAttribute('agent.input', input);
-    let iteration = 0;
-
-    while (iteration < MAX_ITERATIONS) {
-      const stepSpan = tracer.startSpan(`llm-call-${iteration}`, {}, context.active());
-      const start = Date.now();
-
-      const response = await callLLM(messages);
-
-      stepSpan.setAttribute('llm.model', 'claude-sonnet-4-20250514');
-      stepSpan.setAttribute('llm.input_tokens', response.usage.input_tokens);
-      stepSpan.setAttribute('llm.output_tokens', response.usage.output_tokens);
-      stepSpan.setAttribute('llm.latency_ms', Date.now() - start);
-      stepSpan.setAttribute('llm.stop_reason', response.stop_reason);
-
-      if (response.stop_reason === 'tool_use') {
-        for (const toolCall of extractToolCalls(response)) {
-          const toolSpan = tracer.startSpan(`tool-${toolCall.name}`, {}, context.active());
-          const toolResult = await executeTool(toolCall);
-          toolSpan.setAttribute('tool.name', toolCall.name);
-          toolSpan.setAttribute('tool.success', !toolResult.isError);
-          toolSpan.end();
-        }
-      }
-
-      stepSpan.end();
-      if (response.stop_reason !== 'tool_use') break;
-      iteration++;
-    }
-
-    parentSpan.setAttribute('agent.total_iterations', iteration);
-    parentSpan.end();
-  });
-}
-```
-
-This produces a trace tree: parent span (agent run) -> child spans (LLM calls) -> grandchild spans (tool executions). You can visualize the entire flow in Jaeger or similar.
+An agent that makes 5 tool calls generates 6+ LLM API calls (initial + one after each tool result). Use distributed tracing (OpenTelemetry) with a parent span for the agent run, child spans for each LLM call, and grandchild spans for tool executions. Each span records model, tokens, latency, and stop reason. The trace tree lets you visualize the full flow in Jaeger or similar. See Q19 for a complete instrumented implementation.
 
 **Metrics and alerts:**
 
@@ -892,7 +847,7 @@ server.registerTool(
 );
 
 // --- Resource: Team summary ---
-server.resource(
+server.registerResource(
   'team-summary',
   'tickets://summary',
   { description: 'Overview of all tickets grouped by status' },
@@ -1254,6 +1209,8 @@ const invoice = await extractInvoice(`
 
 **Key design decisions:**
 
+This uses the tool-use-as-schema approach covered in Q10 — defining a "tool" whose input schema matches the desired data shape, then extracting the arguments as structured data.
+
 1. **`tool_choice: { type: 'tool', name: 'extract_invoice' }`** forces the model to use the extraction tool rather than responding with text. Without this, the model might decide to answer conversationally.
 2. **Retry with error context** — On validation failure, the error message is included in the next prompt. The model usually fixes the issue on the second attempt (e.g., wrong date format, missing field).
 3. **Zod validation is separate from the JSON Schema** — The tool's JSON Schema ensures the model outputs valid JSON with the right structure. Zod enforces stricter business rules (regex patterns, min lengths, positive numbers). Both layers are needed.
@@ -1343,7 +1300,7 @@ async function callLLMWithObservability(
       llmTokens.inc({ model, prompt_version: PROMPT_VERSION, direction: 'input' }, response.usage.input_tokens);
       llmTokens.inc({ model, prompt_version: PROMPT_VERSION, direction: 'output' }, response.usage.output_tokens);
 
-      span.setStatus({ code: 0 }); // OK
+      span.setStatus({ code: 1 }); // SpanStatusCode.OK
       return response;
     } catch (error: any) {
       span.setStatus({ code: 2, message: error.message }); // ERROR
@@ -1470,6 +1427,8 @@ agent.run (parent span — total duration, iteration count)
 4. **Token accumulation** — Each iteration sends the full conversation history, so input tokens grow with each step. The cost isn't just "sum of individual call costs" — it's accelerating. Traditional traces don't have this compounding cost dimension.
 
 5. **Failure attribution** — If the agent produces a wrong answer, was it the model's reasoning, a misleading tool result, or the prompt? In a traditional chain, errors propagate visibly. In an agent, errors can be subtle misinterpretations buried in step 3 of 8.
+
+For what to log per call, key metrics, and alert thresholds, see Q14.
 
 </details>
 

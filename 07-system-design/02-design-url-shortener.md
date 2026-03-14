@@ -41,7 +41,6 @@ A typical URL shortener has a 100:1 or even 1000:1 read-to-write ratio — URLs 
 - **Redirect type**: The ratio influences whether 301 (permanent, browser-cached) or 302 (temporary, always hits your server) makes sense — 301 reduces server load but sacrifices analytics.
 - **Replication**: High read ratio justifies read replicas at the database level, since replication lag is acceptable for reads but not for the write-then-immediately-read case (which is rare).
 
-**Prioritization approach**: Start with functional requirements (shorten URL, redirect, custom aliases), then non-functional (latency targets, availability SLA, durability). Defer nice-to-haves (analytics dashboard, bulk creation API) to the end of the discussion as extensions.
 
 </details>
 
@@ -238,7 +237,7 @@ import crypto from 'node:crypto';
 
 function hashToShortKey(longUrl: string): string {
   const hash = crypto.createHash('md5').update(longUrl).digest('hex');
-  // Convert first 8 hex chars to base62, take 7 chars
+  // Convert first 12 hex chars to a number, then base62-encode and take 7 chars
   const num = parseInt(hash.substring(0, 12), 16);
   return toBase62(num).substring(0, 7);
 }
@@ -439,13 +438,7 @@ URL click traffic follows a Zipfian / power-law distribution: a tiny fraction of
 
 **Cache sizing:**
 
-From the estimates in question 2: 100M URLs/month, each record ~600 bytes.
-
-- Cache the top 20% of a month's URLs: 20M × 600 bytes = ~12 GB
-- Achievable cache hit rate: 80-90%+
-- A more aggressive approach: cache top 5% = ~3 GB, still catching 50-60% of traffic.
-
-In practice, 10-20 GB of Redis/Memcached comfortably handles this. That's a single node or a small 2-3 node cluster for redundancy.
+Using the 12 GB figure from Q2 (top 20% of a month's URLs at ~600 bytes each), achievable cache hit rate is 80-90%+. A more aggressive approach: cache top 5% = ~3 GB, still catching 50-60% of traffic. Either way, 10-20 GB of Redis/Memcached handles this — a single node or small 2-3 node cluster for redundancy.
 
 **Eviction policy — LRU is the best fit:**
 
@@ -542,11 +535,7 @@ The analytics data is queryable seconds to minutes after the redirect. This is a
 - Users checking their dashboard don't need real-time-to-the-second accuracy.
 - If you need a "live" click counter, use a Redis counter incremented at redirect time (cheap, fast, not durable) as a hot counter, and reconcile with the durable analytics store periodically.
 
-**Failure handling:**
-
-- If the queue publish fails: log the click event locally and retry, or accept the loss (losing 0.01% of click events is usually acceptable for analytics).
-- If the consumer crashes: Kafka retains events and the consumer resumes from its last offset. SQS re-delivers after visibility timeout. No data loss.
-- Dead letter queue for events that repeatedly fail processing (malformed data, enrichment errors).
+**Failure handling:** Kafka retains events for consumer replay; SQS re-delivers on timeout. A dead letter queue catches repeatedly failing events. Detailed failure modes are covered in Q20.
 
 </details>
 
@@ -671,6 +660,7 @@ The key moves to `used_keys` but no URL is ever stored for it. This is **accepta
 **1. Read-time check (lazy evaluation) — always needed:**
 
 ```typescript
+// Uses the Web standard Response API (Cloudflare Workers / Deno / Bun)
 async function redirect(shortKey: string): Promise<Response> {
   const url = await cache.get(shortKey) ?? await db.get(shortKey);
 
@@ -795,10 +785,11 @@ The 302 response is just headers — no body to render. Ensure the app server do
 
 MD5 produces a 128-bit hash (2^128 possibilities). When you truncate to 7 base62 characters, you reduce the output space to 62^7 = ~3.5 trillion. By the birthday paradox, collisions become probable at roughly the square root of the keyspace — around √(3.5 × 10^12) ≈ 1.87 million URLs.
 
-In practice, with 12 billion URLs:
-- Expected collisions: roughly N^2 / (2 × keyspace) = (12 × 10^9)^2 / (2 × 3.5 × 10^12) ≈ 20.5 billion collisions. At this scale, nearly every insert would collide.
+In practice, the collision probability per insert is approximately N / keyspace (where N is the number of existing URLs):
+- At 1 billion URLs: ~0.03% per insert (1 in ~3,500)
+- At 12 billion URLs: ~0.34% per insert (1 in ~300)
 
-Even at 100 million URLs, you'd see thousands of collisions per day.
+At 12 billion URLs, roughly 1 in 300 inserts collides. This is problematic at scale — at 40 writes/sec, that's ~12 collisions per minute requiring retries — but it's not "nearly every insert." The real pain is operational: unpredictable write latency from retries compounding under load.
 
 **Collision detection and resolution flow:**
 
@@ -939,7 +930,7 @@ With consistent hashing:
 
 **Sizing the cache cluster:**
 
-1. **Memory**: 12 GB of URL data (top 20% of monthly URLs) × 2 (replication) = ~24 GB. Redis overhead (pointers, hashtable) adds ~50%, so ~36 GB total. A 3-node cluster with 12 GB each handles this.
+1. **Memory**: Using the 12 GB cache figure from Q2, with replication that's ~24 GB. Redis overhead (pointers, hashtable) adds ~50%, so ~36 GB total. A 3-node cluster with 12 GB each handles this.
 
 2. **Throughput**: Redis handles ~100K+ operations/sec per node. With 4,000 reads/sec (10K at peak), a single node is sufficient for throughput. The cluster is for memory capacity and redundancy, not throughput.
 
@@ -954,12 +945,9 @@ With consistent hashing:
 
 **Why stateless:**
 
-If an app server holds state (like user sessions, URL data, or in-progress transactions), then:
-- Requests must be routed to the specific server that has the state (sticky sessions).
-- Losing a server loses the state.
-- Scaling up means migrating or replicating state.
+Statelessness enables horizontal scaling — any server can handle any request, servers can be added or removed freely, and failures don't lose data. For a URL shortener doing 4,000+ redirects/sec, this is essential.
 
-For a URL shortener doing 4,000+ redirects/sec, you need the ability to add/remove servers freely, route any request to any server, and tolerate server failures without data loss. Statelessness makes all of this trivial.
+The alternative (stateful servers) forces sticky sessions, means losing a server loses its state, and makes scaling up require state migration or replication — all unnecessary complexity for a service whose core operation is a simple key lookup.
 
 **Achieving statelessness:**
 
@@ -968,10 +956,7 @@ All persistent state lives in external stores:
 - **User sessions**: JWT tokens (self-contained, no server-side session) or external session store
 - **KGS key batches**: the only "state" app servers hold in memory
 
-**The KGS batch is the one exception.** Each app server holds a batch of pre-allocated keys (~1,000) in memory. This is acceptable because:
-- Keys are disposable — if the server crashes, the unused keys are simply wasted (as discussed in question 13).
-- No request depends on a specific server having a specific key.
-- Any server can serve any request.
+**The KGS batch is the one exception.** Each app server holds a batch of pre-allocated keys in memory (as covered in Q13). This is acceptable because keys are disposable — a crash wastes them, but no request depends on a specific server having a specific key.
 
 **Load balancing strategies:**
 

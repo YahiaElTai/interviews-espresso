@@ -261,8 +261,8 @@ Neither model works alone at scale. Push fails for celebrities, pull fails for r
 ```typescript
 async function getFeed(userId: string, cursor: string, limit: number) {
   // 1. Get pre-computed feed (pushed posts)
-  const pushedPostIds = await redis.zrangebyscore(
-    `feed:${userId}`, '-inf', cursor, 'LIMIT', 0, limit + 10 // over-fetch for merge
+  const pushedPostIds = await redis.zrevrangebyscore(
+    `feed:${userId}`, cursor, '-inf', 'LIMIT', 0, limit + 10 // over-fetch for merge, newest-first
   );
 
   // 2. Get pull-source accounts this user follows
@@ -477,6 +477,7 @@ Redis pipeline responses return per-command results. If some writes succeed and 
 
 ```typescript
 const results = await pipeline.exec();
+// i * 2 because each follower has two pipeline commands: ZADD + ZREMRANGEBYRANK
 const failedFollowers = job.followerIds.filter((_, i) => results[i * 2][0] !== null);
 
 if (failedFollowers.length > 0 && job.retryCount < MAX_RETRIES) {
@@ -562,9 +563,11 @@ const maxScore = cursor ? decodeCursor(cursor).score : '+inf';
 
 // Fetch more than needed to account for filtering and merge
 const candidateCount = limit * 3; // e.g., 60 candidates for 20 results
-const postEntries = await redis.zrevrangebyscore(
+// ZREVRANGEBYSCORE is deprecated since Redis 6.2.0
+// Modern equivalent: ZRANGE feed:${userId} ${maxScore} -inf BYSCORE REV WITHSCORES LIMIT 0 ${candidateCount}
+const postEntries = await redis.zrange(
   `feed:${userId}`, maxScore, '-inf',
-  'WITHSCORES', 'LIMIT', 0, candidateCount
+  'BYSCORE', 'REV', 'WITHSCORES', 'LIMIT', 0, candidateCount
 );
 // Returns: [postId1, score1, postId2, score2, ...]
 ```
@@ -1073,7 +1076,9 @@ Query the ranking service with debug mode to see the post's score and why it was
 <details>
 <summary>19. Your fan-out queue depth is growing unboundedly and workers can't keep up after a celebrity with 50 million followers posts — walk through how you handle this in real time: what circuit breakers activate, how do you switch that post to pull-based delivery, how do you prioritize which followers get the update first, and what metrics would you monitor to detect this situation before it cascades?</summary>
 
-**Immediate detection — metrics that fire alerts:**
+Building on the scaling mechanisms from question 15 (worker auto-scaling by queue depth, priority queues for active vs inactive users, dynamic hybrid threshold adjustment), this answer focuses on the real-time detection, automated incident response, and mid-fan-out cancellation specific to a 50M-follower scenario.
+
+**Detection — metrics that fire alerts:**
 
 | Metric | Normal | Alert threshold |
 |---|---|---|
@@ -1085,41 +1090,32 @@ Query the ranking service with debug mode to see the post's score and why it was
 
 The combination of queue depth >500K AND growth rate >100K/min triggers the automated response. A single metric spike might be transient, but both together indicate the system can't keep up.
 
-**Real-time response — automated playbook:**
+**Automated response playbook:**
 
 **Phase 1 — Scale workers (0-2 minutes):**
 
-Auto-scaling kicks in based on queue depth. Scale worker fleet from baseline to 3-5x. With cloud auto-scaling, new instances take 1-2 minutes to provision.
+Auto-scaling kicks in per the queue depth thresholds described in question 15. If scaling alone stabilizes queue depth, no further action needed.
 
-```
-Queue depth: 2M, growing at 200K/min
-Current workers: 50
-Target workers: 250 (5x)
-```
+**Phase 2 — Mid-fan-out cancellation and switch to pull (2-5 minutes):**
 
-If scaling alone handles it (queue depth stabilizes and starts dropping), no further action needed.
-
-**Phase 2 — Switch the post to pull-based delivery (2-5 minutes):**
-
-If queue depth continues growing despite scaling, circuit breaker activates:
+If queue depth continues growing despite scaling, the circuit breaker activates and cancels remaining fan-out for the offending post mid-flight:
 
 ```typescript
 async function onFanoutJobReceived(job: FanoutJob) {
   const queueDepth = await getQueueDepth();
 
   if (queueDepth > CRITICAL_THRESHOLD) {
-    // Check if this job is for a high-follower author
     const followerCount = await getFollowerCount(job.authorId);
 
     if (followerCount > EMERGENCY_THRESHOLD) {
-      // Cancel remaining fan-out for this post
+      // Cancel remaining fan-out batches for this post
       await cancelPendingBatches(job.postId);
 
-      // Mark post for pull-based delivery
+      // Mark post for pull-based delivery going forward
       await markAsPullBased(job.postId, job.authorId);
 
-      // The followers who already received it keep it;
-      // the rest will get it via pull at read time
+      // Followers who already received the push keep it;
+      // the rest get it via pull at read time (question 12)
       return;
     }
   }
@@ -1128,43 +1124,21 @@ async function onFanoutJobReceived(job: FanoutJob) {
 }
 ```
 
-This is a partial fan-out — some followers (say 5M out of 50M) already received the push, and the remaining 45M will get it via pull. This is fine because the feed read path already handles the merge (question 12).
+This partial fan-out is safe because the feed read path already merges push and pull content. Some followers (say 5M out of 50M) got the push; the remaining 45M get it via pull seamlessly.
 
-**Phase 3 — Prioritize active users (concurrent with Phase 1-2):**
+**Phase 3 — Active user priority and inactive user shedding (concurrent with Phase 1-2):**
 
-Fan-out jobs are tagged with priority based on follower activity:
+As described in question 15, fan-out jobs are split by follower activity into high-priority and low-priority queues. During a crisis, low-priority (inactive user) jobs are dropped entirely.
 
-```typescript
-// During fan-out batch creation, sort followers by activity
-const activeBatch = followers.filter(f => isRecentlyActive(f));  // logged in <24h
-const inactiveBatch = followers.filter(f => !isRecentlyActive(f));
+**Phase 4 — Dynamic hybrid threshold adjustment:**
 
-// Active users go to high-priority queue
-await highPriorityQueue.publish({ ...job, followerIds: activeBatch });
-// Inactive users go to low-priority queue (processed only when capacity allows)
-await lowPriorityQueue.publish({ ...job, followerIds: inactiveBatch });
-```
+If multiple celebrities post during a live event and the situation persists, temporarily lower the hybrid threshold (as described in question 15) to shift more accounts to pull-based delivery. Revert after queue depth normalizes.
 
-Workers process high-priority jobs first. During a crisis, low-priority jobs may be dropped entirely — inactive users' caches will be rebuilt when they return.
+**Post-incident analysis and prevention:**
 
-**Phase 4 — Dynamically raise the hybrid threshold:**
-
-If the situation persists (multiple celebrities posting during a live event), temporarily lower the follower count threshold for push-based delivery:
-
-```typescript
-// Normal threshold: 100K followers
-// Emergency threshold: 10K followers
-// This switches 10x more accounts to pull-based, dramatically reducing fan-out volume
-await configService.set('fanout.hybrid_threshold', 10_000);
-```
-
-Revert after queue depth returns to normal.
-
-**Post-incident — preventing recurrence:**
-
-- Analyze whether the permanent hybrid threshold should be lowered
-- Add per-author fan-out rate limiting (covered in question 15) to prevent any single author from consuming more than X% of queue capacity
-- Implement pre-emptive pull-based routing for accounts above a "near-celebrity" threshold during detected high-traffic events (sports events, elections)
-- Ensure auto-scaling is fast enough — pre-warm a pool of standby workers during known high-traffic windows
+- Review whether the permanent hybrid threshold should be lowered based on the incident data
+- Implement per-author fan-out rate caps so no single author consumes more than X% of queue capacity
+- Add pre-emptive pull-based routing for "near-celebrity" accounts during known high-traffic windows (sports events, elections, product launches)
+- Pre-warm standby worker pools before predictable traffic spikes to reduce scaling lag
 
 </details>

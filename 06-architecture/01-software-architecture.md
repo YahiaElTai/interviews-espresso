@@ -29,7 +29,7 @@ Without intentional architecture, every module tends to import whatever it needs
 
 **Untestable code** results from business logic being tangled with infrastructure (database calls, HTTP clients, file system). When your order validation function directly calls `prisma.order.findMany()`, the only way to test it is to spin up a real database. **Symptoms**: test suite requires full infrastructure to run, tests are slow and flaky, teams skip testing because the setup cost is too high.
 
-**Why cost grows non-linearly**: each new dependency doesn't just add one link — it multiplies the number of potential paths a change can propagate through. If you have N tightly coupled modules, a change can ripple through up to N*(N-1)/2 connections. This is why a codebase that was "fine" at 10 files becomes painful at 50 and unmaintainable at 200. The cost of change follows a roughly quadratic curve relative to coupling density, not a linear one.
+**Why cost grows non-linearly**: each new dependency doesn't just add one link — it multiplies the paths a change can propagate through. The growth is quadratic, not linear, which is why a codebase that was "fine" at 10 files becomes painful at 50 and unmaintainable at 200.
 
 </details>
 
@@ -54,13 +54,13 @@ The Dependency Rule states that source code dependencies must always point inwar
 
 They all solve the same core problem: **separating business logic from infrastructure so the system is testable, maintainable, and adaptable to change.** They differ in how they draw and enforce those boundaries.
 
-**Layered (n-tier)**: Organizes code in horizontal layers — presentation, business logic, data access. Each layer depends only on the layer directly below. Simple and intuitive, but the dependency direction flows *downward toward the database*, which makes the data layer the most depended-upon (and hardest to change) piece.
+**Layered (n-tier)**: Horizontal layers — presentation, business logic, data access. Each layer depends only on the layer below. Simple and intuitive, but dependencies flow *downward toward the database*, making the data layer hardest to change.
 
-**Clean architecture**: Reorganizes the layers into concentric circles — entities at the center, then use cases, then interface adapters, then frameworks/drivers at the outer ring. The key shift from layered: dependencies point *inward toward the domain*, not downward toward the database. Uses dependency inversion so the domain defines interfaces that outer layers implement.
+**Clean architecture**: Concentric circles — entities at the center, then use cases, interface adapters, frameworks at the outer ring. Key shift: dependencies point *inward toward the domain*, not downward toward the database. The domain defines interfaces that outer layers implement.
 
-**Hexagonal (ports and adapters)**: Same dependency direction as clean architecture but uses different vocabulary. The application core defines "ports" (interfaces for what it needs), and "adapters" implement those ports for specific technologies. Emphasizes the symmetry between driving adapters (things that call your app — HTTP, CLI) and driven adapters (things your app calls — databases, APIs). Less prescriptive about internal layering than clean architecture.
+**Hexagonal (ports and adapters)**: Same dependency direction as clean architecture, different vocabulary. The core defines "ports" (interfaces), and "adapters" implement them. Emphasizes symmetry between inbound adapters (HTTP, CLI) and outbound adapters (databases, APIs). Less prescriptive about internal layering.
 
-**Vertical slice**: Instead of organizing by technical layer (all controllers together, all services together), organizes by feature. Each slice contains its own handler, validation, data access — everything needed for one use case. Reduces coupling between features at the cost of some duplication. Works well when features are independent and cross-cutting concerns are minimal.
+**Vertical slice**: Organizes by feature instead of technical layer. Each slice contains its own handler, validation, data access. Reduces coupling between features at the cost of some duplication.
 
 | Style | Organization axis | Dependency direction | Best for |
 |-------|------------------|---------------------|----------|
@@ -93,8 +93,7 @@ Layered architecture divides the application into horizontal layers, typically t
 - **Rigid horizontal slicing** makes it hard to reason about features. To understand "how does order creation work?" you have to trace through 3+ files across 3 directories.
 
 **Signals you've outgrown it:**
-- Service layer methods are mostly one-liners that delegate to the repository — the layer adds no value.
-- Business logic is scattered across controllers, services, and repository queries with no clear owner.
+- The service layer is a hollow pass-through while business logic scatters across controllers, services, and repository queries with no clear owner.
 - Adding a new feature requires touching every layer even when the change is logically simple.
 - You need to share logic between two services but the layering makes it awkward (no clear "where does shared domain logic go?").
 - Cross-cutting concerns (auth, caching, audit logging) are duplicated or inconsistently applied because they don't fit the layer model.
@@ -336,7 +335,7 @@ The heuristic: **add architectural structure when the cost of not having it beco
 
 **Concrete signs of over-engineering:**
 
-- **Premature abstraction**: An `OrderRepository` interface with one implementation that will never have a second. The interface adds a layer of indirection with no practical benefit — you're not going to swap databases and you're not testing with fakes.
+- **Premature abstraction**: An `OrderRepository` interface with one implementation *and no test fakes* — if you're testing against the real database anyway, the interface adds indirection with no benefit. But if you use fakes for testing (as shown in Q15), the interface earns its keep even with one production implementation.
 - **Unnecessary indirection**: A request passes through Controller -> Validator -> Mapper -> UseCase -> DomainService -> Repository -> Mapper -> Response, where the UseCase and DomainService are one-line pass-throughs. Each layer should add value — if it doesn't, it's noise.
 - **Pattern stuffing**: Using the Strategy pattern, Factory pattern, and Observer pattern in a module with one code path. Patterns are solutions to specific problems — applying them without the problem is cargo culting.
 - **Layers with no logic**: An "application layer" where every method is `return this.repository.findById(id)`. The layer exists because the architecture diagram says it should, not because there's logic to put there.
@@ -627,51 +626,7 @@ export class Product {
 }
 ```
 
-**Infrastructure implementation** — using a plain SQL client (pg):
-
-```typescript
-// infrastructure/adapters/postgres-product-repository.ts
-import { Pool } from 'pg';
-import { Product } from '../../domain/entities/product';
-import { ProductRepository } from '../../domain/ports/product-repository';
-
-export class PostgresProductRepository implements ProductRepository {
-  constructor(private pool: Pool) {}
-
-  async findById(id: string): Promise<Product | null> {
-    const { rows } = await this.pool.query(
-      'SELECT id, name, price, category FROM products WHERE id = $1',
-      [id],
-    );
-    return rows[0] ? this.toDomain(rows[0]) : null;
-  }
-
-  async findByCategory(category: string): Promise<Product[]> {
-    const { rows } = await this.pool.query(
-      'SELECT id, name, price, category FROM products WHERE category = $1',
-      [category],
-    );
-    return rows.map(this.toDomain);
-  }
-
-  async save(product: Product): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO products (id, name, price, category)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (id) DO UPDATE SET name = $2, price = $3, category = $4`,
-      [product.id, product.name, product.price, product.category],
-    );
-  }
-
-  async delete(id: string): Promise<void> {
-    await this.pool.query('DELETE FROM products WHERE id = $1', [id]);
-  }
-
-  private toDomain(row: any): Product {
-    return new Product(row.id, row.name, Number(row.price), row.category);
-  }
-}
-```
+**Infrastructure implementation** — follows the same adapter pattern shown in Q14 (implements the port, maps between domain and DB rows). The Postgres adapter uses a plain SQL client and the `toDomain` mapping pattern.
 
 **Application service** — depends only on the interface:
 
@@ -891,15 +846,18 @@ export class Order {
     const item = this._lineItems.find(li => li.id === lineItemId);
     if (!item) throw new Error(`Line item ${lineItemId} not found`);
 
-    // Temporarily calculate what total would be with new quantity
-    const oldSubtotal = item.subtotal;
-    item.updateQuantity(newQuantity); // delegate to child entity
-    const newTotal = this.total;
+    // Validate projected total BEFORE mutating — sum all other items + new subtotal
+    const otherItemsTotal = this._lineItems
+      .filter(li => li.id !== lineItemId)
+      .reduce((sum, li) => sum.add(li.subtotal), Money.zero('EUR'));
+    const newSubtotal = item.unitPrice.multiply(newQuantity);
+    const projectedTotal = otherItemsTotal.add(newSubtotal);
 
-    if (newTotal.amount > MAX_ORDER_TOTAL.amount) {
-      item.updateQuantity(oldSubtotal.amount / item.unitPrice.amount); // rollback
+    if (projectedTotal.amount > MAX_ORDER_TOTAL.amount) {
       throw new Error('Update would exceed maximum order total');
     }
+
+    item.updateQuantity(newQuantity); // only mutate after validation passes
   }
 
   removeLineItem(lineItemId: string): void {
@@ -963,7 +921,8 @@ Building on the concepts from question 11, here is a concrete implementation.
 src/
   modules/
     orders/
-      index.ts              # PUBLIC API — the only file other modules import
+      index.ts              # PUBLIC API — re-exports types + service
+      types.ts              # Public types (DTOs, event shapes)
       internal/
         entities/
           order.ts
@@ -989,11 +948,10 @@ src/
   app.ts                     # Composition root
 ```
 
-**Module public API** — only exposes what other modules need:
+**Module public types** — defined in a separate file to avoid circular imports:
 
 ```typescript
-// modules/orders/index.ts
-// PUBLIC TYPES — shared with other modules
+// modules/orders/types.ts
 export interface OrderDTO {
   id: string;
   customerId: string;
@@ -1006,21 +964,26 @@ export interface OrderEvents {
   OrderPlaced: { orderId: string; items: Array<{ productId: string; quantity: number }> };
   OrderCancelled: { orderId: string; items: Array<{ productId: string; quantity: number }> };
 }
+```
 
-// PUBLIC SERVICE — the module's API for other modules
+**Module public API** — re-exports types and exposes the module's service:
+
+```typescript
+// modules/orders/index.ts
+export { OrderDTO, OrderEvents } from './types';
 export { OrderModuleAPI, createOrderModule } from './internal/services/order-service';
 ```
 
 Note: `Order` entity, repository interfaces, and internal implementation details are NOT exported.
 
-**Module service** — the internal implementation behind the public API:
+**Module service** — imports types from `./types`, not from the module's own `index.ts`:
 
 ```typescript
 // modules/orders/internal/services/order-service.ts
 import { Order } from '../entities/order';
 import { OrderRepository } from '../repositories/order-repository';
 import { EventBus } from '../../../shared/event-bus';
-import { OrderDTO, OrderEvents } from '../../index';
+import { OrderDTO, OrderEvents } from '../../types';
 
 export interface OrderModuleAPI {
   createOrder(customerId: string, items: Array<{ productId: string; quantity: number; price: number }>): Promise<OrderDTO>;
@@ -1135,17 +1098,7 @@ export class EventBus {
 
 **Extraction path to microservices:**
 
-When the orders module needs to become its own service:
-
-| Monolith | Microservice |
-|----------|-------------|
-| `OrderModuleAPI` interface | HTTP/gRPC API with same methods |
-| In-process function calls from other modules | HTTP client adapter implementing same interface |
-| `EventBus.publish()` | Publish to SQS/Kafka/RabbitMQ |
-| `EventBus.subscribe()` | Queue consumer |
-| Module's Postgres tables | Dedicated database |
-
-The calling code in the inventory module doesn't change — it still calls the same interface. Only the wiring in the composition root changes: instead of `createOrderModule()`, it creates an `HttpOrderClient` that implements `OrderModuleAPI` over the network.
+The extraction path works as described in Q11 — the module's public API becomes the service API, in-process events become queue messages. The calling code in the inventory module doesn't change — it still calls the same interface. Only the wiring in the composition root changes: instead of `createOrderModule()`, it creates an `HttpOrderClient` that implements `OrderModuleAPI` over the network.
 
 </details>
 

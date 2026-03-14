@@ -540,7 +540,7 @@ Use vector clocks or Lamport timestamps to establish happens-before relationship
 
 ```typescript
 import { Pool } from 'pg';
-import { Consumer, EachMessagePayload } from 'kafkajs';
+import { Consumer, Producer, EachMessagePayload } from 'kafkajs';
 
 interface OrderCreatedEvent {
   eventId: string;
@@ -602,6 +602,10 @@ async function handleOrderCreated(
   }
 }
 
+// Track retry attempts in-process (resets if consumer restarts, which is acceptable
+// because a restart effectively gives the message a fresh chance)
+const retryCounts = new Map<string, number>();
+
 // Consumer setup with retry + DLQ routing
 async function startConsumer(
   consumer: Consumer,
@@ -613,10 +617,12 @@ async function startConsumer(
   await consumer.run({
     eachMessage: async ({ topic, partition, message }: EachMessagePayload) => {
       const event: OrderCreatedEvent = JSON.parse(message.value!.toString());
-      const retryCount = parseInt(message.headers?.['retry-count']?.toString() ?? '0');
+      const messageKey = `${topic}-${partition}-${message.offset}`;
+      const retryCount = retryCounts.get(messageKey) ?? 0;
 
       try {
         await handleOrderCreated(pool, event, dlqProducer);
+        retryCounts.delete(messageKey); // clean up on success
       } catch (error) {
         if (retryCount >= MAX_RETRIES) {
           // Route to DLQ after max retries exhausted
@@ -634,8 +640,10 @@ async function startConsumer(
               },
             }],
           });
+          retryCounts.delete(messageKey); // clean up after DLQ routing
         } else {
-          // Re-throw to trigger Kafka redelivery
+          retryCounts.set(messageKey, retryCount + 1);
+          // Re-throw to trigger KafkaJS retry
           throw error;
         }
       }
@@ -756,7 +764,7 @@ async function pollOutbox(pool: Pool, producer: Producer): Promise<void> {
 
     for (const row of rows) {
       await producer.send({
-        topic: row.event_type.toLowerCase().replace(/([A-Z])/g, '.$1').slice(1),
+        topic: row.event_type.replace(/([A-Z])/g, '.$1').slice(1).toLowerCase(),
         messages: [{
           key: row.aggregate_id,
           value: JSON.stringify(row.payload),
@@ -1029,6 +1037,8 @@ Building on the CQRS concepts from question 6, here's a complete implementation.
 
 **Write side — processes commands, emits events via outbox:**
 
+The write side uses the same transactional outbox pattern from Q13 — domain write + outbox record in one transaction. Here the outbox record carries an `OrderPlaced` event that the projection will consume:
+
 ```typescript
 // write-side/order-commands.ts
 interface PlaceOrderCommand {
@@ -1044,7 +1054,6 @@ async function placeOrder(pool: Pool, cmd: PlaceOrderCommand): Promise<void> {
   try {
     await client.query('BEGIN');
 
-    // Write to normalized write model
     await client.query(
       `INSERT INTO orders (id, customer_id, status, total, created_at)
        VALUES ($1, $2, 'placed', $3, NOW())`,
@@ -1059,7 +1068,7 @@ async function placeOrder(pool: Pool, cmd: PlaceOrderCommand): Promise<void> {
       );
     }
 
-    // Outbox — event will be published to the broker
+    // Outbox — same pattern as Q13's createOrder
     await client.query(
       `INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload)
        VALUES ('Order', $1, 'OrderPlaced', $2)`,
@@ -1080,35 +1089,7 @@ async function placeOrder(pool: Pool, cmd: PlaceOrderCommand): Promise<void> {
     client.release();
   }
 }
-
-async function updateOrderStatus(
-  pool: Pool,
-  orderId: string,
-  newStatus: string
-): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    await client.query(
-      'UPDATE orders SET status = $1 WHERE id = $2',
-      [newStatus, orderId]
-    );
-
-    await client.query(
-      `INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload)
-       VALUES ('Order', $1, 'OrderStatusChanged', $2)`,
-      [orderId, JSON.stringify({ orderId, status: newStatus, changedAt: new Date().toISOString() })]
-    );
-
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
+// Status updates follow the same pattern — domain UPDATE + outbox INSERT in one transaction (see Q13).
 ```
 
 **Read model schema — denormalized for fast queries:**

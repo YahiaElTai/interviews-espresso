@@ -509,7 +509,8 @@ FROM gcr.io/distroless/nodejs20-debian12
 WORKDIR /app
 COPY --from=build /app ./
 CMD ["dist/main.js"]
-# Note: ENTRYPOINT is already set to "node" in distroless/nodejs
+# Note: ENTRYPOINT is already set to ["nodejs"] in distroless/nodejs,
+# so CMD provides the argument — exec form CMD is appended to the image's built-in ENTRYPOINT
 ```
 
 **Comparison**:
@@ -534,7 +535,13 @@ CMD ["dist/main.js"]
 - **`node:20-alpine`**: When image size is a priority and you've verified your dependencies work with musl. Good for simple apps with no native addons.
 - **Distroless**: Maximum security posture. Best for production services where you've committed to debugging via logs and metrics rather than shell access. Requires Kubernetes ephemeral containers or the `:debug` variant for troubleshooting.
 
-</details>## Practical — Runtime & Compose<details>
+</details>
+
+---
+
+## Practical — Runtime & Compose
+
+<details>
 <summary>13. Configure proper PID 1 signal handling in a Dockerfile using tini or dumb-init — show the Dockerfile changes, demonstrate the difference in graceful shutdown behavior with and without an init process, and show how to verify that SIGTERM is being properly forwarded to your Node.js application.</summary>
 
 **Option 1: tini in Dockerfile** (most common):
@@ -701,7 +708,11 @@ dmesg | grep -i oom
 docker inspect api --format='{{.HostConfig.CgroupParent}}'
 
 # Check throttling stats (on host)
+# cgroup v1 (older distros):
 cat /sys/fs/cgroup/cpu/docker/<container-id>/cpu.stat
+# cgroup v2 (Ubuntu 22.04+, Debian 12+, Fedora 31+ — now the default):
+cat /sys/fs/cgroup/system.slice/docker-<container-id>.scope/cpu.stat
+
 # nr_periods 1000
 # nr_throttled 250    ← 25% of periods were throttled
 # throttled_time 5000000000  ← nanoseconds spent throttled
@@ -1123,7 +1134,9 @@ Application needs more memory than the limit allows just to start. Common with N
 **Process exits immediately because it's not a server (exit 0)**:
 The CMD runs a script that completes, not a long-running process. Check that the entrypoint actually starts a server that listens on a port.
 
-</details><details>
+</details>
+
+<details>
 <summary>20. A container cannot reach another container or an external service — walk through the systematic debugging process: check which network the containers are on, verify DNS resolution, test connectivity with curl/wget from inside the container, inspect port mappings, and identify whether the issue is network mode, firewall rules, or application-level binding (0.0.0.0 vs 127.0.0.1). Show the exact commands at each step.</summary>
 
 **Step 1: Check which network both containers are on**

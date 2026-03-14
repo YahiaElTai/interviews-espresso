@@ -69,7 +69,6 @@ The virtual DOM diff then ensures only actual DOM changes are applied, so the re
 | Component functions | Called on every render (closures recreated) | Called once (setup function), only reactive expressions re-execute |
 | Ecosystem maturity | Massive ecosystem, battle-tested at scale | Growing but smaller ecosystems |
 
-**Practical tradeoff:** React's model is easier to reason about and harder to break with subtle reactivity bugs, but you pay for it with optimization boilerplate on hot paths. Fine-grained frameworks deliver better default performance but have a steeper mental model and smaller ecosystems.
 
 </details>
 
@@ -512,7 +511,7 @@ Fix: `const config = useMemo(() => ({ theme: 'dark' }), []);`
 const total = useMemo(() => a + b, [a, b]);
 ```
 
-**Mental model:** Don't memoize by default. Profile first, identify the component that's slow, then apply memoization surgically. The React team has said explicitly: most memoization in the wild is unnecessary. React Compiler (in development) aims to automate this entirely.
+**Mental model:** Don't memoize by default. Profile first, identify the component that's slow, then apply memoization surgically. The React team has said explicitly: most memoization in the wild is unnecessary. React Compiler is now shipped and automates memoization — it analyzes your components at build time and inserts `useMemo`, `useCallback`, and `memo` equivalents automatically, making manual memoization largely unnecessary in projects that adopt it.
 
 </details>
 
@@ -582,6 +581,8 @@ function Dashboard() {
 ```
 
 **Where to place split points for maximum impact:**
+
+Route boundaries are the highest-impact choice because users already expect a brief delay during navigation, route components are natural chunk boundaries that the bundler can cleanly separate, and each route typically represents the largest code surface per split point.
 
 1. **Route boundaries** — always. This is table stakes.
 2. **Heavy dependencies** — components that pull in large libraries (chart libraries, markdown editors, PDF renderers). One lazy import can save 200KB+ from the initial bundle.
@@ -1030,12 +1031,14 @@ function TabPanel({ index, children }: TabPanelProps) {
   return <div role="tabpanel">{children}</div>;
 }
 
-// Attach subcomponents to Tabs for clean imports
-Tabs.List = TabList;
-Tabs.Tab = Tab;
-Tabs.Panel = TabPanel;
+// Attach subcomponents to Tabs for clean imports (Object.assign is TypeScript-safe)
+const CompoundTabs = Object.assign(Tabs, {
+  List: TabList,
+  Tab: Tab,
+  Panel: TabPanel,
+});
 
-export { Tabs };
+export { CompoundTabs as Tabs };
 ```
 
 **Consumer usage — flexible composition:**
@@ -1440,10 +1443,9 @@ If you add `onMessage` to the dependency array, the WebSocket disconnects and re
 
 **The ref pattern solves this** by storing the latest `onMessage` in a ref (`onMessageRef.current = onMessage`) on every render. The WebSocket handler reads from `ref.current`, which always points to the latest version. The effect doesn't need `onMessage` in its dependencies because refs are mutable containers outside the closure system.
 
-**`useEffectEvent` (experimental) is the React-blessed solution:**
+**`useEffectEvent` is the React-blessed solution (stable in React 19):**
 
 ```typescript
-// When stable — replaces the manual ref pattern
 const onWsMessage = useEffectEvent((data: unknown) => {
   onMessage(data); // Always reads latest onMessage, never stale
 });
@@ -1495,6 +1497,12 @@ type FormData = z.infer<typeof fullSchema>;
 // Step schemas mapped by index
 const stepSchemas = [personalSchema, addressSchema, paymentSchema] as const;
 
+// --- Step Props ---
+interface StepProps {
+  register: ReturnType<typeof useForm<FormData>>['register'];
+  errors: ReturnType<typeof useForm<FormData>>['formState']['errors'];
+}
+
 // --- Step Components ---
 function PersonalStep({ register, errors }: StepProps) {
   return (
@@ -1540,11 +1548,6 @@ function PaymentStep({ register, errors }: StepProps) {
       {errors.expiry && <span className="error">{errors.expiry.message}</span>}
     </div>
   );
-}
-
-interface StepProps {
-  register: ReturnType<typeof useForm<FormData>>['register'];
-  errors: ReturnType<typeof useForm<FormData>>['formState']['errors'];
 }
 
 // --- Main Form ---
@@ -1755,26 +1758,9 @@ export function QuantitySelector({ productId, price }: {
 <details>
 <summary>21. A useEffect callback is logging stale state values even though the state has clearly updated — walk through why this happens (the closure captures the value at render time), how to identify stale closure bugs using console logging and the React DevTools hooks inspector, and show the different fix patterns (dependency array correction, ref pattern, functional state updates) with tradeoffs of each?</summary>
 
-**Why this happens — the closure model:**
+**Why this happens:**
 
-Every render creates a new scope. When `useEffect` runs, its callback closes over the state values from that specific render. If the effect's dependency array doesn't include the state variable, the effect doesn't re-run when that state changes — so the callback permanently sees the value from the render when it was created.
-
-```tsx
-function Counter() {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      console.log('Count is:', count); // Always logs 0 — stale closure
-    }, 1000);
-    return () => clearInterval(id);
-  }, []); // Empty deps — effect runs once, closes over count = 0
-
-  return <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>;
-}
-```
-
-The button updates `count` to 1, 2, 3... but the interval always logs 0 because it captured the initial closure.
+Building on the closure model from Q7 — every render creates a new closure, and effects capture the values from the render they were created in. If the dependency array omits a state variable, the effect's callback permanently sees the stale value from its original render.
 
 **How to identify stale closure bugs:**
 

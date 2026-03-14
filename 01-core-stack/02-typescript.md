@@ -667,13 +667,12 @@ enum Direction { Up, Down, Left, Right } // 0, 1, 2, 3
 // Direction[0] === "Up" and Direction["Up"] === 0
 // This means the runtime object is larger than expected
 
-// Widening — any number is assignable to a numeric enum
 function move(dir: Direction) { /* ... */ }
-move(999); // No error! TypeScript allows any number
-// This completely defeats the purpose of an enum
+move(Direction.Up); // OK
+move(999);          // Error in TS 5.0+ — not assignable to Direction
 ```
 
-The widening issue is the killer problem. A numeric enum that accepts any number provides almost no type safety.
+Since TypeScript 5.0, all enums are union enums — each member gets its own type and the enum is a union of those member types. This means arbitrary numbers like `999` are no longer assignable to a numeric enum, fixing the widening problem that plagued earlier versions. However, if you use a non-trivial initializer (e.g., computed values like `Math.random()`), TypeScript opts out of union enum behavior and the enum falls back to accepting any number.
 
 **`const` enums — inlined at compile time:**
 
@@ -844,7 +843,9 @@ import pkg from "some-package";         // Resolves via "require" condition in e
 
 **Practical recommendation**: Use `"moduleResolution": "node16"` for pure Node.js projects (it matches what the runtime actually does). Use `"bundler"` for projects using Vite, esbuild, or webpack. Avoid `node10` for new projects — it's outdated and will silently resolve things differently than your runtime.
 
-</details><details>
+</details>
+
+<details>
 <summary>13. Why does TypeScript offer three assertion patterns — satisfies, as const, and explicit type annotations — what does each one do differently to the inferred type, when should you use each, and what goes wrong when you use `as` (type assertion) where you should have used `satisfies`?</summary>
 
 Each pattern has a different effect on the inferred type of a value:
@@ -928,7 +929,9 @@ const config2 = { port: 3000, host: "localhost" } satisfies Config;
 | `satisfies Type` | Yes | Yes (partially — keeps inferred types) | Config objects, maps where you want both validation and narrow types |
 | `as Type` | No | No | Last resort — casting external data (prefer Zod), test mocks |
 
-</details><details>
+</details>
+
+<details>
 <summary>14. How do TypeScript's type operators (keyof, typeof at the type level, and indexed access types T[K]) work together to enable type-safe property access — show how combining keyof with indexed access creates the pattern behind Pick and Record, how typeof extracts types from runtime values, and what are the common mistakes when using these operators (e.g., typeof on a type vs a value)?</summary>
 
 These three operators are the building blocks for most advanced TypeScript patterns.
@@ -1106,7 +1109,9 @@ This gives you exhaustiveness checking (as covered in question 8), specific data
 
 **Practical recommendation**: Use thrown exceptions for truly exceptional cases (network failures, programmer errors). Use Result types for expected failure modes in domain logic (validation, business rules) where the caller should handle each case. Use discriminated union errors when you have a known set of error types with different associated data.
 
-</details>## Practical — Type System Patterns
+</details>
+
+## Practical — Type System Patterns
 
 <details>
 <summary>16. Build a generic repository interface in TypeScript that constrains the entity type to have an id field — show how the constraint prevents invalid usage, how you'd add generic methods (findById, create, update) that preserve type safety, and what happens if a consumer passes a type that doesn't satisfy the constraint</summary>
@@ -1207,7 +1212,7 @@ function pipe<A, B, C, D>(value: A, fn1: (a: A) => B, fn2: (b: B) => C, fn3: (c:
 function pipe<A, B, C, D, E>(
   value: A, fn1: (a: A) => B, fn2: (b: B) => C, fn3: (c: C) => D, fn4: (d: D) => E
 ): E;
-function pipe(value: unknown, ...fns: Function[]): unknown {
+function pipe(value: unknown, ...fns: Array<(...args: any[]) => any>): unknown {
   return fns.reduce((acc, fn) => fn(acc), value);
 }
 
@@ -1328,7 +1333,9 @@ type Z = Ret<(() => string) | (() => number)>;
 
 Each union member is processed independently, and the results are unioned together. This is usually the desired behavior — if you have a union of functions, you get a union of their parameter tuples or return types. If you wanted to check the union as a whole instead, wrap in a tuple to disable distribution: `[T] extends [Promise<infer U>]` (as covered in question 6).
 
-</details><details>
+</details>
+
+<details>
 <summary>19. Show how to compose Pick, Omit, and Record to build a type-safe event handler map — given a set of event names and their payload types, construct a handler registry type where each event maps to a correctly-typed callback, and demonstrate what TypeScript catches at compile time if a handler has the wrong signature</summary>
 
 **Step 1 — Define event payload types:**
@@ -1431,7 +1438,9 @@ The key technique: the mapped type `[E in keyof EventPayloads]: (payload: EventP
 <details>
 <summary>20. Implement a discriminated union for a state machine (e.g., request states: idle, loading, success, error) with proper exhaustiveness checking — show the never trick in a switch default, demonstrate how this catches missing cases at compile time, and show the pattern for type-safe reducer functions</summary>
 
-**The state union — each state carries exactly the data it needs:**
+Building on the discriminated union and exhaustiveness pattern from Q8, this extends the pattern with generics and a reducer.
+
+**Generic state union — each state carries exactly the data it needs:**
 
 ```typescript
 type RequestState<T> =
@@ -1441,27 +1450,7 @@ type RequestState<T> =
   | { status: "error"; error: Error; retryCount: number };
 ```
 
-**Exhaustiveness checking with the `never` trick:**
-
-```typescript
-function assertNever(x: never): never {
-  throw new Error(`Unhandled state: ${JSON.stringify(x)}`);
-}
-
-function getStatusMessage<T>(state: RequestState<T>): string {
-  switch (state.status) {
-    case "idle":
-      return "Ready to fetch";
-    case "loading":
-      return `Loading since ${new Date(state.startedAt).toISOString()}`;
-    case "success":
-      return `Loaded ${JSON.stringify(state.data)}`;
-    case "error":
-      return `Failed: ${state.error.message} (retries: ${state.retryCount})`;
-    default:
-      return assertNever(state); // state is `never` here — all cases handled
-  }
-}
+**Exhaustiveness checking** uses the same `assertNever` pattern from Q8. Each branch narrows the generic state, and the `default` branch ensures all variants are handled:
 ```
 
 **What happens when you add a new state and forget to handle it:**
@@ -1684,22 +1673,7 @@ const routes = [
 // Without as const: string[][] — loses all specificity
 ```
 
-**Scenario 4 — Function parameter contract (explicit annotation):**
-
-```typescript
-interface CreateUserInput {
-  name: string;
-  email: string;
-  role: "admin" | "user";
-}
-
-// Annotation is the right choice for function parameters and class fields —
-// you want the contract, not the narrow type
-async function createUser(input: CreateUserInput): Promise<User> {
-  // input.role is "admin" | "user" — narrowed enough for the contract
-  // Don't need literal type preservation here
-}
-```
+**Scenario 4 — Explicit annotation for function parameters and class fields** — use when you want the type contract, not literal type preservation. This is the standard choice for function signatures.
 
 **Scenario 5 — Combining `as const` + `satisfies`:**
 
@@ -1836,7 +1810,9 @@ Specific errors you'll see:
 
 **Path alias gotcha**: `paths` only affects TypeScript's type resolution — the compiled JS still has `@src/...` import paths. You need a runtime resolver: `tsc-alias` (post-compile rewrite), `tsx` (dev), or Node's native `package.json` `"imports"` field (which works with `moduleResolution: "NodeNext"` and requires no extra tooling).
 
-</details><details>
+</details>
+
+<details>
 <summary>24. Set up runtime validation at an API boundary using Zod — define a schema that matches a TypeScript type, use it to validate incoming request bodies, show how to infer the TypeScript type from the Zod schema (z.infer), and demonstrate what happens when validation fails vs when you skip validation and trust incoming data</summary>
 
 This builds on the runtime validation concept from question 2 with a complete practical implementation.
@@ -1969,8 +1945,6 @@ app.post("/orders", validateBody(CreateOrderSchema), (req, res) => {
 
 </details>
 
-</details>
-
 <details>
 <summary>25. Configure a TypeScript project to correctly resolve both ESM and CJS dependencies — show the tsconfig moduleResolution setting, package.json type field, and the specific errors you get when resolution is wrong (ERR_REQUIRE_ESM, ERR_MODULE_NOT_FOUND), and how to fix each</summary>
 
@@ -2073,8 +2047,6 @@ const { namedExport } = pkg; // May need to destructure from default
 **Cause**: CJS modules have `module.exports` (a single export), not `export default` + named exports. `esModuleInterop` creates a compatibility wrapper, but edge cases exist where named imports don't map correctly.
 
 **Practical tip**: When in doubt about a dependency's module format, check its `package.json` for `"type": "module"` and `"exports"` field. If it has `"exports": { "import": ..., "require": ... }`, it's dual-format and will work either way. If it only has `"main"`, it's CJS-only.
-
-</details>
 
 </details>
 
@@ -2192,22 +2164,7 @@ let name: string | null = null;
 }
 ```
 
-**Common `strictFunctionTypes` violations:**
-
-```typescript
-// Violation: callback parameter type is too narrow
-type Handler = (event: Event) => void;
-const handler: Handler = (event: MouseEvent) => { // Error
-  event.clientX; // MouseEvent is narrower than Event
-};
-
-// Fix: accept the base type and narrow inside
-const handler: Handler = (event: Event) => {
-  if (event instanceof MouseEvent) {
-    event.clientX;
-  }
-};
-```
+**Common `strictFunctionTypes` violations** (same concept as Q4 — contravariant parameter checking): Fix by accepting the base type and narrowing inside the handler with `instanceof`.
 
 ```jsonc
 // Round 4: replace individual flags with strict: true
@@ -2242,7 +2199,9 @@ const config: Config = getConfig(); // getConfig might return null
 6. Schedule follow-up work for suppressed errors
 7. Move to the next flag
 
-</details><details>
+</details>
+
+<details>
 <summary>27. Given a TypeScript codebase with several any types that have leaked through — walk through finding them (strict compiler flags, ESLint rules), show how to systematically replace any with unknown and add proper narrowing, and demonstrate how a single any in a utility function propagates to infect callers' types</summary>
 
 This expands on the `any` propagation problem from question 3 with a systematic remediation approach.
@@ -2275,32 +2234,9 @@ This expands on the `any` propagation problem from question 3 with a systematic 
 
 `noImplicitAny` catches *implicit* any (untyped params). The ESLint rules catch *explicit* any and — critically — any *usage* of values that have the `any` type, even if the `any` came from a dependency.
 
-**Step 2 — Demonstrate how `any` propagates (infection):**
+**Step 2 — Understand `any` propagation:**
 
-```typescript
-// A single any in a utility function...
-function parseConfig(raw: string): any {
-  return JSON.parse(raw); // JSON.parse returns any
-}
-
-// ...infects every caller:
-const config = parseConfig('{"port": 3000}');
-// config is any — no errors on anything below
-
-const port: number = config.port;           // No error, but could be undefined
-const host: string = config.host;           // No error, host doesn't exist
-const nested = config.a.b.c.d;             // No error, complete nonsense
-const result: boolean[] = config.server;    // No error, could be anything
-
-// It gets worse — any propagates THROUGH typed functions:
-function getPort(cfg: { port: number }): number {
-  return cfg.port;
-}
-const p = getPort(config); // No error! any satisfies any parameter type
-// p is number (the return type), so the any is now hidden inside a "safe" type
-```
-
-The infection path: `JSON.parse` returns `any` -> `parseConfig` returns `any` -> every caller gets `any` -> callers pass `any` into typed functions silently -> downstream code looks type-safe but isn't.
+As covered in Q3, `any` infects everything it touches — flowing through assignments, function calls, and even into typed functions whose return types then hide the `any` under a "safe" type. The key danger: `any` satisfies any parameter type, so passing an `any` value into a typed function produces no error, and the return value looks safe but isn't.
 
 **Step 3 — Systematic replacement with `unknown` + narrowing:**
 
@@ -2375,8 +2311,6 @@ const parsed: unknown = JSON.parse("{}");
 
 </details>
 
-</details>
-
 ---
 
 ## Experience-Based Questions
@@ -2415,8 +2349,6 @@ These questions test real-world experience. Prepare by mapping them to your own 
 
 </details>
 
-</details>
-
 <details>
 <summary>29. Describe a time you built a complex generic type or utility type to solve a real problem — what was the use case, how did you design it, and how did it improve the codebase?</summary>
 
@@ -2446,8 +2378,6 @@ These questions test real-world experience. Prepare by mapping them to your own 
 - Don't pick an example where a simpler solution existed — the interviewer will ask "couldn't you just...?"
 - Be ready to whiteboard or explain the type on the spot
 - If asked "was it worth the complexity?", have a honest answer about maintenance cost
-
-</details>
 
 </details>
 
@@ -2481,8 +2411,6 @@ These questions test real-world experience. Prepare by mapping them to your own 
 
 **Example outline to personalize:**
 > "We had a service consuming messages from a queue. The message payload was typed with `as OrderEvent` — no runtime validation. A upstream team added a new optional field and changed the shape of an existing field. Our TypeScript types didn't match the new payload, but since we used `as`, the compiler never flagged it. In production, we were writing corrupted order data to our database for 4 hours before monitoring caught the anomaly. The fix was adding Zod validation at every queue consumer (the boundary pattern from question 2). The systemic change was a team rule: no `as` on external data, enforced by an ESLint rule. We also added payload schema versioning so breaking changes would be caught at the validation layer."
-
-</details>
 
 </details>
 

@@ -32,9 +32,7 @@
 
 **Why this evolution happened sequentially:**
 
-The industry could not jump to agents because each stage required solving prerequisite problems. Inline completion proved LLMs could generate useful code at all. Chat proved they could handle complex reasoning and multi-step problems. Only after both were validated did the infrastructure for agents make sense — agents need reliable code generation (proven by completion), reasoning ability (proven by chat), plus tool use, file system access, and execution sandboxing that took additional engineering.
-
-Each stage also required building user trust incrementally. Developers needed to trust autocomplete before trusting a chatbot, and trust a chatbot before trusting an agent that modifies files autonomously.
+The industry could not jump to agents because each stage required solving prerequisite problems and building user trust incrementally. Inline completion proved LLMs could generate useful code at all. Chat proved they could handle complex reasoning and multi-step problems. Only after both were validated — and developers trusted autocomplete, then chatbots — did the infrastructure and trust for autonomous agents make sense. Agents need reliable code generation (proven by completion), reasoning ability (proven by chat), plus tool use, file system access, and execution sandboxing that took additional engineering.
 
 **How they complement each other in practice:**
 
@@ -197,39 +195,16 @@ Think of it like giving directions: "Drive to 123 Main Street" (structured) vs. 
 
 A complex engineering task has too many requirements, constraints, and edge cases to express in a single prompt. Even if you could write a perfect prompt, the model would need to hold all constraints simultaneously while generating code — and it will inevitably drop some. Single-shot works for isolated functions. It breaks down when the task involves multiple files, error handling, validation, tests, and integration with existing code.
 
-**The iterative refinement loop:**
+**The conceptual framework for iterative refinement:**
 
-**Step 1 — Initial generation (broad strokes):** Give the model the high-level task with key constraints. Accept that the first output will be a rough draft.
+Effective refinement follows a predictable pattern of narrowing scope:
 
-```
-Implement an order creation endpoint. Here's the service interface
-and the existing product endpoint as a reference pattern.
-```
+1. **Initial generation (broad strokes)** — Give the high-level task with key constraints. Accept that the first output is a rough draft covering 60-70% of requirements. Deliberately leave out secondary requirements to keep the model focused on structure.
+2. **Critique and correct** — Review for structural issues. Be specific about what is wrong ("validation is missing, use Zod") rather than vague ("fix it"). The model improves most when corrections reference concrete patterns in your codebase.
+3. **Constraint tightening** — Add the requirements you deliberately held back: edge case handling, authorization, concurrency, integration with other services. Each round narrows the gap between "works" and "production-ready."
+4. **Edge case injection** — Push the model to handle failure modes: transaction rollbacks, concurrent requests, malformed input. This is where the model's output becomes robust.
 
-**Step 2 — Critique and correct:** Review the output for structural issues. Point out what is wrong or missing, not just "fix it."
-
-```
-The validation is missing — add Zod schema validation for the request body.
-The error handling doesn't match our pattern — we use AppError classes,
-not raw throw statements. See src/errors/ for reference.
-```
-
-**Step 3 — Constraint tightening:** Add the specific requirements you deliberately left out of the first prompt.
-
-```
-Add rate limiting using our existing middleware. Handle the case where
-the product referenced in the order doesn't exist — return 404 with
-our standard error format. Add idempotency key support via the
-X-Idempotency-Key header.
-```
-
-**Step 4 — Edge case injection:** Push the model to handle the cases it missed.
-
-```
-What happens if the database transaction fails mid-way through creating
-the order and updating inventory? Add rollback handling. What if the
-same idempotency key is sent concurrently from two requests?
-```
+See Q16 for a full practical walkthrough of this loop applied to a real endpoint.
 
 **When to abandon refinement and write it yourself:**
 
@@ -240,10 +215,7 @@ same idempotency key is sent concurrently from two requests?
 
 **Recognizing diminishing returns:**
 
-- Each refinement round produces smaller improvements
-- You are making cosmetic changes (variable names, formatting) rather than structural ones
-- The model starts introducing new bugs while fixing the ones you pointed out
-- You find yourself re-explaining constraints from earlier rounds (the model "forgot" them)
+Each refinement round should produce noticeably smaller improvements. You have hit diminishing returns when: you are making cosmetic changes (variable names, formatting) rather than structural ones, the model starts introducing new bugs while fixing the ones you pointed out, or you find yourself re-explaining constraints from earlier rounds (the model "forgot" them).
 
 **Practical heuristic:** If the model gets 80% right in the first shot and 95% after one round of refinement, the last 5% is almost always faster to fix by hand than to prompt for.
 
@@ -254,7 +226,7 @@ same idempotency key is sent concurrently from two requests?
 
 **When to avoid AI generation:**
 
-**Security-critical code paths** — Authentication flows, authorization checks, cryptographic operations, input sanitization, token validation. LLMs generate "plausible security code" that often has subtle flaws: timing-safe comparison replaced with `===`, missing CSRF protection, JWT validation that skips expiry checks, bcrypt rounds set too low. The risk is that the code looks secure to anyone who is not a security expert, passes code review, and ships with a vulnerability. Security code must be written by someone who understands the threat model, not generated by a tool that understands patterns.
+**Security-critical code paths** — Authentication flows, authorization checks, cryptographic operations, input sanitization, token validation. As covered in Q3, AI-generated security code often passes review because it looks correct — but LLMs generate "plausible security code" with subtle flaws: timing-safe comparison replaced with `===`, missing CSRF protection, JWT validation that skips expiry checks, bcrypt rounds set too low. Security code must be written by someone who understands the threat model, not generated by a tool that understands patterns.
 
 **Complex business rules with subtle edge cases** — Tax calculations, financial transactions, regulatory compliance logic, billing with proration and refunds. These domains have edge cases that are not documented in public code and not represented in training data. An LLM will generate code that handles the common case but misses the edge case where a leap year interacts with a billing cycle, or where a currency conversion requires specific rounding rules. These bugs are expensive — they result in wrong charges, compliance violations, or financial discrepancies.
 
@@ -289,13 +261,11 @@ same idempotency key is sent concurrently from two requests?
 - **Cannot write code without the tool** — When the AI is down or unavailable, productivity drops to near zero. The developer stares at an empty file without knowing where to start.
 - **Accepting without understanding** — Committing AI-generated code they cannot explain line by line. If asked "why did you use this approach?", the answer is "that's what the AI suggested."
 - **Declining debugging skills** — When something breaks, the first instinct is to paste the error into AI instead of reading the stack trace, checking logs, or reasoning about the code. Debugging becomes "prompt until it works" rather than "understand why it is broken."
-- **Prompt-first thinking** — Reaching for the AI tool before thinking about the problem. No mental model of the solution before asking for code.
-- **Copy-paste-pray workflow** — Generating code, pasting it, running tests, and if they fail, asking the AI to fix it — without understanding what went wrong.
+- **Prompt-first, copy-paste-pray workflow** — Reaching for the AI tool before thinking about the problem, generating code, pasting it, running tests, and if they fail, asking the AI to fix it — no mental model formed at any step.
 
 **Warning signs in teams:**
 
-- Knowledge silos shrink to zero — nobody deeply understands any part of the codebase because everything was AI-generated.
-- Code reviews become rubber stamps — "the AI wrote it and the tests pass" replaces actual review.
+- Code reviews become rubber stamps — "the AI wrote it and the tests pass" replaces actual review, and nobody deeply understands any part of the codebase.
 - Onboarding depends entirely on AI — new team members cannot navigate the codebase without an AI tool because documentation and code comments were AI-generated and no human has a deep mental model.
 
 **Why this is particularly dangerous for junior-to-mid developers:**
@@ -372,10 +342,8 @@ Give the model perfect context (paste the exact files) and a clear prompt (expli
 
 **The problem they solve:**
 
-Without project-level context files, every new conversation starts from zero. You either re-explain your project's conventions every time ("we use Zod for validation, AppError for errors, repository pattern for data access...") or you accept generic output that does not match your codebase. This is the "cold start" problem — the AI has no persistent memory of your project.
-
-Per-conversation prompting works for one-off questions but fails for consistent, project-wide AI usage because:
-- **Repetition** — You repeat the same instructions across dozens of conversations
+Expanding on the context file strategy mentioned in Q4, per-conversation prompting fails for consistent, project-wide AI usage because:
+- **Repetition** — You repeat the same instructions ("use Zod for validation, AppError for errors, repository pattern for data access") across dozens of conversations
 - **Inconsistency** — You forget different constraints in different conversations, leading to inconsistent AI output
 - **Onboarding** — New team members do not know what instructions to give the AI
 - **Drift** — As the project evolves, scattered per-conversation instructions become stale
@@ -384,15 +352,15 @@ Project-level context files solve all of these: one source of truth, committed t
 
 **Design principles for effective context files:**
 
-**Architecture overview** — Not the full codebase documentation, but enough for the AI to understand: "This is a NestJS monorepo with 3 services. Service A handles ingestion, Service B handles querying, they communicate via a shared PostgreSQL database."
+**Architecture overview** — Without it, the AI cannot reason about where files should go or how services interact, leading to structurally wrong output. Not the full codebase documentation, but enough: "This is a NestJS monorepo with 3 services. Service A handles ingestion, Service B handles querying, they communicate via a shared PostgreSQL database."
 
-**Coding conventions** — Specific and actionable: "Use `async/await`, never callbacks. Error handling uses our `AppError` class hierarchy. All database queries go through repository classes, never direct in services."
+**Coding conventions** — Without explicit conventions, the AI falls back to generic patterns from training data that do not match your codebase. Be specific and actionable: "Use `async/await`, never callbacks. Error handling uses our `AppError` class hierarchy. All database queries go through repository classes, never direct in services."
 
-**Anti-patterns** — What NOT to do. This is often more valuable than positive instructions: "Never use `any` type. Never import from another service's internal modules. Never use `console.log` — use our structured logger."
+**Anti-patterns** — The AI's default behavior frequently includes common mistakes; anti-patterns prevent them more effectively than positive instructions alone. "Never use `any` type. Never import from another service's internal modules. Never use `console.log` — use our structured logger."
 
-**Common patterns with examples** — Show one example of the "right way" to write an endpoint, a test, a migration. The AI will follow the pattern.
+**Common patterns with examples** — A single concrete example anchors the AI's output more reliably than paragraphs of description. Show one example of the "right way" to write an endpoint, a test, a migration. The AI will follow the pattern.
 
-**Specificity over generality** — "Use Zod schemas in `src/schemas/` for request validation" is useful. "Write clean code" is useless.
+**Specificity over generality** — Vague instructions ("write clean code") give the AI no actionable constraint and produce no measurable improvement. "Use Zod schemas in `src/schemas/` for request validation" is useful. "Write clean code" is useless.
 
 **What changes with well-crafted context files:**
 
@@ -693,7 +661,7 @@ With the context file:
 ```typescript
 // AI generates:
 @Get(':id')
-async getOrder(@Param('id', ParseUUIDPipe) id: string) {
+async getOrder(@Param('id', ParseUUIDPipe) id: string) { // NestJS built-in — validates UUID format
   const order = await this.orderService.findById(id);  // Delegates to service
   return order;  // Service handles NotFoundError, DTO mapping
 }
@@ -712,6 +680,8 @@ The context file steers the AI toward the correct patterns: delegating to servic
 
 <details>
 <summary>16. Take a complex engineering task — such as adding a new API endpoint with validation, database queries, error handling, and tests — and demonstrate the iterative prompting workflow from start to finish: show the initial prompt, explain why the first output is insufficient, show how you refine through follow-up prompts (adding constraints, fixing errors, handling edge cases), and identify the point where you stop prompting and start editing manually?</summary>
+
+Building on the refinement framework from Q6, here is the full iterative workflow applied to a real task.
 
 **Task: Add a `PATCH /api/orders/:id/cancel` endpoint to an existing NestJS service.**
 

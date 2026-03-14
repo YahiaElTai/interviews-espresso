@@ -41,7 +41,7 @@ Each tool solves one problem well:
 | **Correlation** | Manual setup of shared labels, data source linking | Built-in correlation between metrics, logs, traces |
 | **Time to value** | Days/weeks to set up properly | Hours -- install agent, get dashboards |
 
-**When to choose PLG:** You need cost control at scale, have the team to operate it, or need flexibility to customize. **When to choose all-in-one:** Small team, no dedicated platform/SRE resources, or you value speed of setup over cost optimization.
+**When to choose PLG:** Your team has 2+ engineers who can own the infra, and you need to customize or scale beyond vendor pricing. **When to choose all-in-one:** Small team with no dedicated platform/SRE resources.
 
 </details>
 
@@ -207,9 +207,8 @@ Every unique combination of metric name + label key-value pairs = one time serie
 1. **Normalize paths.** Strip IDs: `/api/users/:id` not `/api/users/abc123`. Do this in instrumentation code, not relabel_configs.
 2. **Allowlist labels.** Only permit known, bounded label values. Reject or bucket unknown values into "other."
 3. **Review in PR.** Any new metric or label should be reviewed for cardinality impact before merging.
-4. **Use `metric_relabel_configs`** to drop dangerous labels at scrape time as a safety net.
-5. **Set hard limits.** Prometheus supports `--storage.tsdb.max-block-chunk-segment-size` and some TSDB tuning, but more practically, use a metrics proxy (like Grafana Agent or prom-client middleware) that enforces cardinality limits per metric.
-6. **Separate high-cardinality data.** If you truly need per-user metrics, send those to a different system (like ClickHouse or a dedicated high-cardinality TSDB) -- not Prometheus.
+4. **Use `metric_relabel_configs`** to drop dangerous labels at scrape time as a safety net, and use a metrics proxy (like Grafana Agent or prom-client middleware) that enforces per-metric cardinality limits. Prometheus itself has no built-in per-metric cardinality cap, which is exactly why external enforcement matters.
+5. **Separate high-cardinality data.** If you truly need per-user metrics, send those to a different system (like ClickHouse or a dedicated high-cardinality TSDB) -- not Prometheus.
 
 </details>
 
@@ -1372,11 +1371,12 @@ promtool tsdb analyze /prometheus/data
 scrape_configs:
   - job_name: "order-api"
     metric_relabel_configs:
-      # Drop the high-cardinality "path" label from histogram buckets
-      - source_labels: [__name__]
-        regex: "http_request_duration_seconds_.*"
-        action: labeldrop
-        regex: "path"
+      # Replace the high-cardinality "path" label with a constant, scoped to histogram metrics only
+      - source_labels: [__name__, path]
+        regex: "http_request_duration_seconds_.+;.+"
+        target_label: path
+        replacement: "aggregated"
+        action: replace
 
       # Or drop entire metrics that are too expensive
       - source_labels: [__name__]

@@ -355,7 +355,9 @@ app.set('trust proxy', 'loopback, 10.0.0.0/8');
 
 **The rule:** Never trust `X-Forwarded-For` at face value. Configure the exact number of trusted proxies or their IP ranges. If your app is directly exposed (no proxy), disable trust-proxy entirely — otherwise clients can forge their IP trivially.
 
-</details><details>
+</details>
+
+<details>
 <summary>9. Why would you serve multiple backend services from a single domain using path-based routing at the proxy layer — what are the alternatives (subdomains, separate domains), what are the tradeoffs, and how does Nginx's location block matching and priority system (exact, prefix, regex) determine which block handles a given request?</summary>
 
 **Why path-based routing from a single domain:**
@@ -524,9 +526,9 @@ So with `max_fails=3 fail_timeout=30s`: if 3 requests fail within any 30-second 
 **When all upstreams are marked unhealthy:**
 
 Nginx has no healthy servers to send traffic to. Behavior depends on the situation:
-- If all servers are marked failed, Nginx **resets all of them to "live"** and tries them again. This is a safety mechanism — it's better to try a possibly-recovered server than to reject all traffic.
-- Every request during this state may hit a failed server, resulting in 502 Bad Gateway responses until at least one server recovers.
-- If you have `backup` servers defined, those are tried before falling back to this reset behavior.
+- When all upstreams are marked failed within their `fail_timeout` windows, Nginx returns **502 Bad Gateway** for incoming requests — there is no immediate "reset all to live" mechanism.
+- Once a server's `fail_timeout` expires, Nginx sends it a single request to check recovery. If it succeeds, the server rejoins the pool.
+- If `backup` servers are defined, those are tried first before all primary servers are exhausted.
 
 **Adding a new backend without restart:**
 
@@ -765,9 +767,7 @@ server {
 
 **Why `proxy_buffering off` for SSE:**
 
-As covered in question 7, Nginx buffers upstream responses by default. For SSE, buffering means events accumulate in Nginx's memory until a buffer fills, then they're flushed to the client as a batch. The client sees nothing for seconds, then gets a burst of events. `proxy_buffering off` sends each chunk to the client as soon as Nginx receives it from the backend.
-
-WebSocket doesn't need this setting because after the 101 upgrade, Nginx operates as a TCP tunnel — no HTTP-level buffering applies.
+As covered in Q7, `proxy_buffering off` is required so events stream to the client immediately rather than accumulating in Nginx's buffers. WebSocket doesn't need this because after the 101 upgrade, Nginx operates as a TCP tunnel.
 
 **Symptoms of misconfiguration:**
 
@@ -821,19 +821,9 @@ http {
 
 **How `real_ip_recursive on` prevents IP spoofing:**
 
-Without it, a client can inject a fake IP:
+As covered in Q8, clients can inject fake IPs into XFF headers. With `real_ip_recursive on` and `set_real_ip_from` scoped to your infrastructure IPs only, Nginx walks the chain from right to left, skipping trusted proxies. The first untrusted IP becomes `$remote_addr`.
 
-```
-Client sends: X-Forwarded-For: 1.2.3.4
-ALB appends:  X-Forwarded-For: 1.2.3.4, 203.0.113.50
-Nginx sees:   X-Forwarded-For: 1.2.3.4, 203.0.113.50
-```
-
-With `real_ip_recursive on` and `set_real_ip_from` configured for the ALB's IP range, Nginx walks the XFF chain from right to left:
-1. `203.0.113.50` — is this a trusted proxy? Yes (in the `set_real_ip_from` range). Skip.
-2. `1.2.3.4` — is this a trusted proxy? No. This is the real client IP. **But wait** — `203.0.113.50` is the actual client, not `1.2.3.4`. The client injected `1.2.3.4`.
-
-The key insight: **`set_real_ip_from` must only include your infrastructure IPs** (load balancer, internal proxies), not arbitrary external IPs. If `203.0.113.50` is the real client IP and it's NOT in your trusted range, `real_ip_recursive` correctly stops at it and `$remote_addr` becomes `203.0.113.50`.
+The key difference in a cloud LB setup: **`set_real_ip_from` must include the LB's IP range** (e.g., VPC CIDR) so Nginx skips past the LB to find the real client IP. If the LB's IP is not in the trusted range, Nginx stops there and misidentifies the LB as the client.
 
 **`proxy_set_header` vs `add_header` in nested locations:**
 
@@ -874,7 +864,9 @@ location /api/ {
 
 - **`add_header`** — Adds a header to the **response sent to the client**. Same inheritance behavior: defining any `add_header` in a child context replaces all inherited `add_header` directives. The `always` flag makes it apply to error responses too (not just 2xx/3xx).
 
-</details>## Practical — Observability & Debugging
+</details>
+
+## Practical — Observability & Debugging
 
 <details>
 <summary>16. Your application is intermittently returning 502 Bad Gateway through Nginx — walk through the exact steps to diagnose the root cause: what to check in Nginx error logs, how to determine whether the upstream is crashing vs refusing connections vs timing out during response, what the difference between "connection refused" and "no live upstreams" means, and how to fix each case.</summary>
@@ -1098,7 +1090,9 @@ http {
 
 Option 2 is the most common in practice — it avoids the stale DNS problem entirely by pointing Nginx at a stable Kubernetes Service IP.
 
-</details>---
+</details>
+
+---
 
 ## Experience-Based Questions
 

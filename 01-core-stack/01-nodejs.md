@@ -919,65 +919,9 @@ async function csvToJsonPipeline(inputPath: string, outputPath: string) {
   );
 }
 
-// Approach 2: Using a Transform class (traditional, more control)
-class CsvToJsonTransform extends Transform {
-  private headers: string[] | null = null;
-  private isFirst = true;
-  private remainder = '';
-
-  constructor() {
-    super({ encoding: 'utf8' }); // object mode off, strings in/out
-  }
-
-  _transform(chunk: Buffer, _encoding: string, callback: Function) {
-    const data = this.remainder + chunk.toString();
-    const lines = data.split('\n');
-    this.remainder = lines.pop() ?? ''; // last line may be incomplete
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const fields = line.split(',');
-
-      if (!this.headers) {
-        this.headers = fields;
-        this.push('[\n');
-        continue;
-      }
-
-      const obj: Record<string, string> = {};
-      this.headers.forEach((h, i) => (obj[h.trim()] = fields[i]?.trim() ?? ''));
-
-      const prefix = this.isFirst ? '' : ',\n';
-      this.isFirst = false;
-      this.push(`${prefix}  ${JSON.stringify(obj)}`);
-    }
-    callback(); // signal we're done with this chunk
-  }
-
-  _flush(callback: Function) {
-    // Handle any remaining data
-    if (this.remainder.trim() && this.headers) {
-      const fields = this.remainder.split(',');
-      const obj: Record<string, string> = {};
-      this.headers.forEach((h, i) => (obj[h.trim()] = fields[i]?.trim() ?? ''));
-      this.push(`,\n  ${JSON.stringify(obj)}`);
-    }
-    this.push('\n]\n');
-    callback();
-  }
-}
-
-// Usage with callback-style pipeline
-pipeline(
-  createReadStream('large-data.csv'),
-  new CsvToJsonTransform(),
-  createWriteStream('output.json'),
-  (err) => {
-    if (err) console.error('Pipeline failed:', err);
-    else console.log('Pipeline complete');
-  },
-);
 ```
+
+You can also implement this with a `Transform` class for more control over chunk boundaries (handling partial lines in `_transform`, flushing remainders in `_flush`), but async generators are simpler for most cases.
 
 **What happens when the writable side is slower:**
 
@@ -1138,97 +1082,7 @@ app.post('/hash', async (req, res) => {
 <details>
 <summary>18. Implement AsyncLocalStorage to propagate a request ID through an HTTP request's entire lifecycle (middleware → service → database call → logger) — show the setup code, how to access the store in nested async functions, and what breaks if you use callbacks that aren't async-context-aware</summary>
 
-This builds on the AsyncLocalStorage concepts from Q9 with a complete, production-ready implementation.
-
-**Setup — context module:**
-
-```typescript
-// context.ts — single source of truth for request context
-import { AsyncLocalStorage } from 'node:async_hooks';
-
-interface RequestContext {
-  requestId: string;
-  userId?: string;
-  startTime: number;
-}
-
-export const requestContext = new AsyncLocalStorage<RequestContext>();
-
-export function getRequestId(): string {
-  return requestContext.getStore()?.requestId ?? 'no-request-id';
-}
-
-export function getContext(): RequestContext {
-  const ctx = requestContext.getStore();
-  if (!ctx) throw new Error('Request context not available — are you inside a request?');
-  return ctx;
-}
-```
-
-**Logger — automatically includes request ID:**
-
-```typescript
-// logger.ts
-import { getRequestId } from './context.js';
-
-export const logger = {
-  info(msg: string, meta?: Record<string, unknown>) {
-    console.log(JSON.stringify({
-      level: 'info',
-      requestId: getRequestId(),
-      msg,
-      ...meta,
-      timestamp: new Date().toISOString(),
-    }));
-  },
-  error(msg: string, meta?: Record<string, unknown>) {
-    console.error(JSON.stringify({
-      level: 'error',
-      requestId: getRequestId(),
-      msg,
-      ...meta,
-    }));
-  },
-};
-```
-
-**HTTP server — wrapping each request:**
-
-```typescript
-// server.ts
-import http from 'node:http';
-import crypto from 'node:crypto';
-import { requestContext } from './context.js';
-import { logger } from './logger.js';
-import { UserService } from './user-service.js';
-
-const userService = new UserService();
-
-const server = http.createServer((req, res) => {
-  const context = {
-    requestId: (req.headers['x-request-id'] as string) ?? crypto.randomUUID(),
-    startTime: Date.now(),
-  };
-
-  // .run() creates the async context — everything inside inherits it
-  requestContext.run(context, async () => {
-    logger.info(`${req.method} ${req.url}`);
-
-    try {
-      const user = await userService.findById('123');
-      // logger calls inside findById automatically have the requestId
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(user));
-    } catch (err) {
-      logger.error('Request failed', { error: (err as Error).message });
-      res.writeHead(500);
-      res.end('Internal error');
-    }
-
-    logger.info(`Completed in ${Date.now() - context.startTime}ms`);
-  });
-});
-```
+This builds on the AsyncLocalStorage concepts from Q9. The basic pattern (context module, `ctxStore.run()` in the HTTP server) is shown there. Here we focus on what's new: **multi-layer propagation** through service and database layers, and **context loss scenarios**.
 
 **Service and database layers — no context passing needed:**
 
@@ -1549,17 +1403,19 @@ export function cacheSet(k: string, v: string) { cache.set(k, v); }
 
 If one dependency `require()`s your library and another `import`s it, they get separate `cache` Maps. Calling `cacheSet` from one doesn't affect `getCacheSize` from the other.
 
-**Mitigation — the wrapper pattern:** Ship one format as the "real" implementation, the other as a thin wrapper:
+**Mitigation — the wrapper pattern:** Ship one format as the "real" implementation, the other as a thin wrapper. The CJS wrapper uses dynamic `import()` to delegate to the ESM build, but this returns a Promise — so CJS consumers must handle async initialization:
 
 ```javascript
 // dist/cjs/index.js — CJS wrapper that delegates to ESM
+// IMPORTANT: this returns a Promise, so consumers must use:
+//   const lib = await require('my-lib')();
+// This only works if the consumer can handle async initialization.
 module.exports = async function loadLib() {
   return import('../esm/index.js');
 };
-// Or for synchronous compat, re-export only stateless functions
 ```
 
-A simpler approach used by many libraries: ship only ESM and let consumers handle CJS compatibility, since modern tooling (bundlers, Node.js 22+) handles ESM well.
+For libraries that need synchronous CJS compatibility, the safer approach is to make CJS the "real" implementation and have ESM re-export it, or ship only stateless function re-exports from the CJS entry. A simpler approach used by many modern libraries: ship only ESM and let consumers handle CJS compatibility, since modern tooling (bundlers, Node.js 22+) handles ESM well.
 
 **2. Conditional exports resolution order:**
 
@@ -1997,24 +1853,13 @@ readFile(__filename, () => {
 
 Since check always comes after poll and before the next timers phase, `setImmediate` always beats `setTimeout` when scheduled from inside an I/O callback.
 
-**Bonus — nested nextTick vs Promise ordering:**
+Note: the nextTick queue is drained completely (including new entries added during draining) before the microtask queue gets a turn, which is why recursive nextTick can starve microtasks (as covered in Q3).
 
-```typescript
-process.nextTick(() => {
-  console.log('nextTick 1');
-  Promise.resolve().then(() => console.log('promise inside nextTick'));
-  process.nextTick(() => console.log('nextTick 2'));
-});
+</details>
 
-// Output:
-// nextTick 1
-// nextTick 2      ← nextTick queue drains fully before microtasks
-// promise inside nextTick
-```
+---
 
-The nextTick queue is drained completely (including new entries added during draining) before the microtask queue gets a turn. This is why recursive nextTick can starve microtasks (as covered in Q14).
-
-</details>## Practical — Debugging & Profiling
+## Practical — Debugging & Profiling
 
 <details>
 <summary>24. Walk through diagnosing a memory leak in a Node.js application — show how to take heap snapshots with --inspect and Chrome DevTools (or the heapdump module), how to compare two snapshots to find retained objects, how to identify common culprits (growing arrays, closures, event listeners), how process.memoryUsage() and v8.getHeapStatistics() help you monitor memory programmatically, and what --max-old-space-size controls</summary>
@@ -2070,7 +1915,6 @@ Open `chrome://inspect` in Chrome → click "inspect" on your Node.js process �
 
 ```typescript
 import v8 from 'node:v8';
-import { writeFileSync } from 'node:fs';
 
 // Expose an endpoint to take snapshots
 app.get('/debug/heapdump', (req, res) => {
@@ -2243,7 +2087,7 @@ node --trace-gc server.js
 #                                                        120ms pause — this is your problem
 ```
 
-- Long Mark-Sweep-Compact pauses indicate old generation pressure — likely a memory leak or objects living longer than necessary. See Q28 for heap snapshot diagnosis.
+- Long Mark-Sweep-Compact pauses indicate old generation pressure — likely a memory leak or objects living longer than necessary. See Q24 for heap snapshot diagnosis.
 
 **Something else entirely:**
 - **Thread pool saturation:** Low event loop lag, low CPU, but high latency on endpoints doing DNS/file I/O. Profile won't show it because the main thread is idle. See Q26.
@@ -2259,7 +2103,7 @@ Intermittent slow responses
 │   └── NO → Not an event loop problem
 │       ├── Thread pool latency high? → UV_THREADPOOL_SIZE (Q26)
 │       ├── Specific endpoints only? → Distributed tracing → slow downstream
-│       └── Memory growing? → GC pauses → heap snapshots (Q28)
+│       └── Memory growing? → GC pauses → heap snapshots (Q24)
 ```
 
 </details>
@@ -2362,7 +2206,7 @@ const stream = createReadStream('file.txt');
 stream.on('data', process);
 // If an error occurs before 'end', the fd leaks
 
-// GOOD — use pipeline (auto-closes on error or completion, as covered in Q17)
+// GOOD — use pipeline (auto-closes on error or completion, as covered in Q16)
 import { pipeline } from 'node:stream/promises';
 await pipeline(createReadStream('file.txt'), transformStream, writable);
 
@@ -2416,7 +2260,9 @@ ulimit -n 65536
 
 Increasing `ulimit` is a band-aid — it raises the ceiling but doesn't fix the leak. Always find and fix the root cause (unclosed handles, unbounded concurrency, connection pool misconfiguration) and then set a reasonable limit as a safety net.
 
-</details>---
+</details>
+
+---
 
 ## Experience-Based Questions
 
@@ -2500,7 +2346,7 @@ These questions test real-world experience. Prepare by mapping them to your own 
 
 **What the interviewer is looking for:**
 
-- Awareness of the Node.js-specific attack surface (supply chain, prototype pollution, ReDoS — covered in Q16).
+- Awareness of the Node.js-specific attack surface (supply chain, prototype pollution, ReDoS — covered in Q15).
 - A structured incident response: discovery, assessment, remediation, prevention.
 - Understanding of the difference between a vulnerability existing and it being exploitable.
 - Proactive security practices, not just reactive firefighting.

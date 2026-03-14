@@ -38,8 +38,6 @@ These are interconnected but distinct. Code organization determines what can be 
 - **Testing gaps** — Without a deliberate strategy, teams either over-test at the wrong layer (brittle E2E tests for logic that should be unit tested) or under-test integration points.
 - **Deployment friction** — Hardcoded environment variables at build time, no preview environments, and manual deployment processes mean slow and risky releases.
 
-The common failure mode is that teams make implicit decisions about these dimensions by default (whatever the framework CLI scaffolds), then discover the consequences months later when the codebase is too large to easily restructure.
-
 </details>
 
 <details>
@@ -88,7 +86,7 @@ The common failure mode is that teams make implicit decisions about these dimens
 **Dependency graph:**
 
 - **Nx** analyzes actual source code imports to build the dependency graph. If app A imports from lib B, Nx knows — even without an explicit `package.json` dependency. This powers accurate affected detection.
-- **Turborepo** relies on the `package.json` workspace dependency declarations. If you forget to declare a dependency, Turborepo won't know about it, and affected detection can miss changes.
+- **Turborepo** primarily relies on `package.json` workspace dependency declarations for the dependency graph, though its `inputs` configuration provides file-level awareness for cache invalidation. If you forget to declare a dependency, Turborepo won't know about it, and affected detection can miss changes.
 
 **Plugin ecosystem:**
 
@@ -133,12 +131,7 @@ For most teams starting a new React/TypeScript monorepo, Turborepo is the simple
 
 **Why it's controversial:**
 
-Micro-frontends solve an organizational problem (team independence) at the cost of technical complexity. The promise is that teams can deploy independently, use different tech stacks, and move at their own pace. The reality is:
-
-- **Shared dependency management** is still hard. If all micro-frontends use React, you're managing version alignment across teams anyway.
-- **UX consistency** requires a shared design system regardless of architecture — micro-frontends don't eliminate that problem.
-- **The composition layer** becomes a critical piece of infrastructure that someone must own.
-- **Performance** often suffers: duplicate framework code, extra network requests, hydration complexity.
+Micro-frontends solve an organizational problem (team independence) at the cost of technical complexity. The composition layer becomes critical infrastructure, performance often suffers from duplicate framework code, and the cross-cutting concerns (dependency alignment, UX consistency) don't disappear — they just move to a harder coordination layer.
 
 **When the complexity pays off:**
 
@@ -243,7 +236,7 @@ Semantic versioning (semver) is the foundation, but the execution details matter
 
 **Production builds:**
 
-- **Vite** uses Rollup (or the newer Rolldown) for production. Rollup produces highly optimized bundles with excellent tree-shaking.
+- **Vite** uses Rollup for production builds (with Rolldown as a future planned replacement that's still in development). Rollup produces highly optimized bundles with excellent tree-shaking.
 - **Webpack** uses its own bundler. It has more mature code splitting, especially for complex dynamic import patterns and shared chunks across multiple entry points.
 
 **What webpack still does better:**
@@ -506,7 +499,7 @@ Architecturally this distinction matters because:
 - **Cons**: Requires GraphQL infrastructure (gateway, schema registry). Query complexity and N+1 problems at the gateway level. Learning curve if the team isn't already using GraphQL.
 - **Best for**: Large organizations with multiple backend services and frontend apps that need flexible data composition.
 
-**Practical recommendation**: For most monorepos, a shared typed API client (generated from OpenAPI specs or GraphQL codegen) combined with React Query for caching is the sweet spot. It gives you type safety, caching, and background refetching without the infrastructure overhead of GraphQL federation.
+**Practical recommendation**: For most monorepos, a shared typed API client (generated from OpenAPI specs or GraphQL codegen) combined with React Query for caching is the sweet spot.
 
 </details>
 
@@ -866,45 +859,13 @@ Module Federation's `shared` config creates a negotiation protocol at runtime:
 
 **GitHub Actions pipeline:**
 
+The basic CI structure (checkout, pnpm setup, Turbo with remote caching and affected filtering) is shown in Q14. This answer extends it with parallelized E2E sharding and cache safeguards.
+
 ```yaml
-# .github/workflows/ci.yml
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
-
+# .github/workflows/ci.yml — extends the Q14 pipeline with E2E sharding
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for affected calculation
-
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-
-      - run: pnpm install --frozen-lockfile
-
-      # Type check, lint, unit/integration tests — affected only
-      - name: Build affected
-        run: pnpm turbo build --filter="...[origin/main]"
-
-      - name: Lint affected
-        run: pnpm turbo lint --filter="...[origin/main]"
-
-      - name: Unit & integration tests
-        run: pnpm turbo test --filter="...[origin/main]"
+    # Same as Q14: checkout, pnpm setup, turbo build/lint/test with --filter
 
   e2e:
     needs: build-and-test
@@ -943,6 +904,8 @@ jobs:
           TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
 
       # Run sharded E2E tests
+      # Note: --reporter=blob can also be configured in playwright.config.ts
+      # as `reporter: process.env.CI ? 'blob' : 'html'` for consistency
       - name: E2E tests (shard ${{ matrix.shard }}/4)
         run: |
           pnpm exec playwright test \
@@ -1207,7 +1170,7 @@ The biggest hidden cost is the **test migration** — if your Jest config depend
 
 **Nx module boundary rules:**
 
-First, tag projects in their `project.json`:
+Building on the type-based module boundary rules shown in Q8, add scope-based constraints for team ownership. First, tag projects with both type and scope in their `project.json`:
 
 ```json
 // apps/web/project.json
@@ -1222,18 +1185,6 @@ First, tag projects in their `project.json`:
   "tags": ["type:app", "scope:admin"]
 }
 
-// packages/ui/project.json
-{
-  "name": "ui",
-  "tags": ["type:ui", "scope:shared"]
-}
-
-// packages/utils/project.json
-{
-  "name": "utils",
-  "tags": ["type:util", "scope:shared"]
-}
-
 // packages/feature-checkout/project.json
 {
   "name": "feature-checkout",
@@ -1241,60 +1192,21 @@ First, tag projects in their `project.json`:
 }
 ```
 
-Then configure the enforcement rules:
+Then extend the Q8 ESLint config with scope constraints:
 
 ```javascript
-// eslint.config.mjs
-import nx from '@nx/eslint-plugin';
-
-export default [
-  ...nx.configs['flat/base'],
-  ...nx.configs['flat/typescript'],
-  {
-    files: ['**/*.ts', '**/*.tsx'],
-    rules: {
-      '@nx/enforce-module-boundaries': [
-        'error',
-        {
-          allow: [],
-          enforceBuildableLibDependency: true,
-          depConstraints: [
-            // Apps can depend on features, UI, and utils — NOT other apps
-            {
-              sourceTag: 'type:app',
-              onlyDependOnLibsWithTags: ['type:feature', 'type:ui', 'type:util'],
-            },
-            // Features can depend on UI and utils — NOT apps or other features
-            {
-              sourceTag: 'type:feature',
-              onlyDependOnLibsWithTags: ['type:ui', 'type:util'],
-            },
-            // UI can depend on other UI and utils only
-            {
-              sourceTag: 'type:ui',
-              onlyDependOnLibsWithTags: ['type:ui', 'type:util'],
-            },
-            // Utils can only depend on other utils
-            {
-              sourceTag: 'type:util',
-              onlyDependOnLibsWithTags: ['type:util'],
-            },
-            // Scope constraints: customer scope can't import admin scope
-            {
-              sourceTag: 'scope:customer',
-              onlyDependOnLibsWithTags: ['scope:customer', 'scope:shared'],
-            },
-            {
-              sourceTag: 'scope:admin',
-              onlyDependOnLibsWithTags: ['scope:admin', 'scope:shared'],
-            },
-          ],
-        },
-      ],
-    },
-  },
-];
+// Add these to the depConstraints array from Q8
+{
+  sourceTag: 'scope:customer',
+  onlyDependOnLibsWithTags: ['scope:customer', 'scope:shared'],
+},
+{
+  sourceTag: 'scope:admin',
+  onlyDependOnLibsWithTags: ['scope:admin', 'scope:shared'],
+},
 ```
+
+This two-dimensional constraint system (type + scope) prevents both architectural violations (UI importing from features) and organizational violations (customer team importing admin code).
 
 **For Turborepo (ESLint-only approach):**
 
@@ -1440,8 +1352,10 @@ declare global {
 
 **Edge function that replaces placeholders (e.g., CloudFront Function):**
 
+**CloudFront Function (viewer request — SPA routing):**
+
 ```javascript
-// cloudfront-function.js — runs on every request for index.html
+// cloudfront-function.js
 function handler(event) {
   var request = event.request;
   var uri = request.uri;
@@ -1453,8 +1367,12 @@ function handler(event) {
 
   return request;
 }
+```
 
-// Lambda@Edge for config injection (origin response)
+**Lambda@Edge (origin response — config injection):**
+
+```javascript
+// lambda-edge-config.js
 exports.handler = async (event) => {
   const response = event.Records[0].cf.response;
 

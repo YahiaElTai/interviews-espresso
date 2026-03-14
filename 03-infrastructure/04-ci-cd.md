@@ -39,7 +39,7 @@ Each solves a distinct problem in the path from code to production:
 - **Treating CD as just "CI with a deploy step"**: you lose the concept of a *validated, promotable artifact*. Teams end up rebuilding for each environment instead of promoting the same artifact, which means what you tested isn't what you deployed.
 - **Jumping to Continuous Deployment without Continuous Delivery maturity**: without comprehensive automated tests, monitoring, and rollback capability, every commit becomes a potential outage.
 
-**How they compose:** CI feeds into CD — CI produces a tested artifact, CD promotes it through environments with increasing confidence (staging → canary → production). Continuous Deployment is an opt-in extension of Continuous Delivery where the final gate is automated rather than manual. The pipeline balances speed (fast feedback, frequent deploys) with safety (each stage catches different classes of bugs before they reach users).
+**How they compose:** CI produces a tested artifact, CD promotes it through environments with increasing confidence, and Continuous Deployment makes the final gate automated rather than manual.
 
 </details>
 
@@ -264,15 +264,11 @@ These come from environment variables, ConfigMaps, or external configuration ser
 
 1. **Staging doesn't mirror production infrastructure**: Staging uses a single-node database, production uses a cluster with read replicas. Queries that work on a single node fail on replicas due to replication lag.
 
-2. **Different dependency versions between environments**: Staging's managed Redis is v6, production is v7. A command deprecated in v7 breaks silently.
+2. **Traffic volume differences**: Code that works at staging's 10 req/s falls apart at production's 10,000 req/s. Connection pools exhaust, timeouts cascade, memory leaks that take days to manifest at low traffic appear in hours.
 
-3. **Traffic volume differences**: Code that works at staging's 10 req/s falls apart at production's 10,000 req/s. Connection pools exhaust, timeouts cascade, memory leaks that take days to manifest at low traffic appear in hours.
+3. **Missing environment variables**: Staging has a config value hardcoded from an earlier debug session. Production expects it from an env var that was never added to the deployment manifest.
 
-4. **Missing environment variables**: Staging has a config value hardcoded from an earlier debug session. Production expects it from an env var that was never added to the deployment manifest.
-
-5. **Network topology differences**: Staging services can reach each other directly, production routes through a service mesh with mTLS. Code that doesn't handle TLS certificate validation breaks.
-
-6. **Data shape differences**: Staging has clean seed data. Production has 5 years of organic data with nulls, unicode edge cases, and records that violate constraints added after they were created.
+4. **Data shape differences**: Staging has clean seed data. Production has 5 years of organic data with nulls, unicode edge cases, and records that violate constraints added after they were created.
 
 **Prevention**: Infrastructure-as-code for environment parity, automated config validation that checks required env vars before startup, and load testing in staging with production-like traffic patterns.
 
@@ -324,9 +320,9 @@ permissions:
   contents: read
 
 steps:
-  - uses: aws-actions/configure-aws-credentials@v4
+  - uses: aws-actions/configure-aws-credentials@v4  # pin to SHA in production (simplified here)
     with:
-      role-to-arn: arn:aws:iam::123456789:role/ci-deploy-only
+      role-to-assume: arn:aws:iam::123456789:role/ci-deploy-only
       aws-region: eu-west-1
 ```
 
@@ -584,7 +580,7 @@ jobs:
           docker_layer_caching: true  # DLC: caches Docker layers between builds
       - docker/build:
           image: myorg/myapp
-          tag: ${CIRCLE_SHA1}
+          tag: ${CIRCLE_SHA1}  # resolved at runtime by the shell, not by YAML
       - docker/push:
           image: myorg/myapp
           tag: ${CIRCLE_SHA1}

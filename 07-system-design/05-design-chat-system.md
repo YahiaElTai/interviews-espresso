@@ -50,7 +50,7 @@
 | Messages per second | 20B / 86,400 | ~230K msg/s (peak ~3x = 700K) |
 | Concurrent WebSocket connections | 500M x 10% online at any time | 50M concurrent connections |
 | Storage per year | 20B msgs x 100 bytes avg x 365 | ~730 TB/year (text only) |
-| Bandwidth per connection | 1 msg/min x 200 bytes (with overhead) | ~3.3 bytes/s per conn (~160 KB/day) |
+| Bandwidth per connection | 1 msg/min x 200 bytes (message payload + WebSocket frame header + protocol metadata) | ~3.3 bytes/s per conn (~160 KB/day) |
 | Total ingress bandwidth | 700K msg/s x 200 bytes | ~140 MB/s peak |
 
 **Key scale constraints these numbers drive:**
@@ -267,7 +267,6 @@ Clients (mobile/web)
 **When you need a fallback:**
 
 - Corporate networks with proxies that terminate or block WebSocket upgrades
-- Environments where HTTP/2 is available but WebSocket isn't (some load balancers)
 - Degraded network conditions where a simpler protocol recovers faster
 
 Typical fallback chain: WebSocket → SSE + REST POST → long polling. Libraries like Socket.IO implement this automatically, though at scale most teams use raw WebSocket with a thin fallback layer rather than Socket.IO's overhead.
@@ -371,7 +370,7 @@ server.on("upgrade", async (req, socket, head) => {
     const token = extractToken(req); // from query or protocol header
     const user = await verifyJWT(token);
 
-    wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.handleUpgrade(req, socket, head, async (ws) => {
       // Register connection in Redis
       await redis.set(`user:${user.id}:gateway`, GATEWAY_ID, "EX", 300);
       // Store in local connection map
@@ -1008,6 +1007,8 @@ Typing indicators are ephemeral — never persisted, fire-and-forget delivery, n
 <details>
 <summary>16. How do you scale a fleet of WebSocket gateway servers — why is scaling stateful WebSocket connections fundamentally different from scaling stateless HTTP services, how does graceful connection draining work during deployments (move connections without dropping messages), and what are the tradeoffs of sticky sessions (routing a user to the same server) vs a connection registry (any server can route to any user)?</summary>
 
+This is a common follow-up because getting it wrong means every deployment drops active users.
+
 **Why WebSocket scaling is fundamentally different:**
 
 Stateless HTTP services can be scaled by adding servers behind a load balancer — any server handles any request, and a server can be removed instantly because no request depends on it being there. WebSocket connections are **stateful and long-lived** (hours to days). Each connection holds in-memory state: the user's identity, subscriptions, and the TCP/TLS session. You can't just kill a server — you must migrate or reconnect every user on it.
@@ -1068,20 +1069,7 @@ Key differences:
 
 **2. Clients reconnect with exponential backoff + jitter:**
 
-```typescript
-// Critical: jitter prevents thundering herd
-function reconnectDelay(attempt: number): number {
-  const base = Math.min(1000 * 2 ** attempt, 30_000); // 1s, 2s, 4s, ... max 30s
-  const jitter = Math.random() * base; // 0 to 100% of base
-  return base + jitter;
-}
-
-// 50,000 clients with jitter spread over:
-// Attempt 0: 1-2 seconds (random)
-// Attempt 1: 2-4 seconds
-// Attempt 2: 4-8 seconds
-// This spreads the reconnection storm over ~10-15 seconds instead of a single spike
-```
+Using the backoff strategy from question 7 (exponential backoff with jitter capped at 30s), 50,000 clients spread their reconnections over ~10-15 seconds instead of a single spike.
 
 **3. Connection registry cleanup:**
 

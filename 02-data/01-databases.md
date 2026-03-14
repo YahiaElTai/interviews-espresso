@@ -280,7 +280,9 @@ Both use Multi-Version Concurrency Control — readers don't block writers and w
 
 **Practical default:** Use Read Committed (PostgreSQL's default) for most work. Step up to Repeatable Read or Serializable only for specific transactions that need it — financial transfers, inventory reservations, anything where stale reads cause correctness issues. Always implement retry logic for serialization failures.
 
-</details><details>
+</details>
+
+<details>
 <summary>8. What are the main database caching patterns (cache-aside, write-through, write-behind) -- how does each work, what consistency tradeoffs does each make, why is cache invalidation considered one of the hardest problems, and when is using a read replica a better alternative to adding a caching layer?</summary>
 
 ### Cache-aside (lazy loading)
@@ -381,7 +383,9 @@ Any node can accept reads and writes. Writes go to multiple nodes in parallel; r
 
 **Practical recommendation:** Start with single-leader + async replicas in the same region. Add read replicas in other regions for read latency. Only move to multi-leader when you have a proven need for low-latency writes in multiple regions and are prepared to handle conflict resolution.
 
-</details><details>
+</details>
+
+<details>
 <summary>10. When should you shard a database and what are the tradeoffs of each sharding strategy — how do range-based, hash-based, and directory-based sharding work, what happens to cross-shard queries and transactions, why is sharding usually the last resort after other scaling approaches, and how does federation (functional partitioning — splitting by domain into separate databases) compare as a simpler scaling step before full sharding?</summary>
 
 ### When to shard
@@ -895,6 +899,7 @@ async function getOrders(limit: number, cursor?: string) {
   if (cursor) {
     const { c, i } = decodeCursor(cursor);
     // Keyset pagination: "give me rows after the cursor position"
+    // Note: row value comparison (created_at, id) < (...) is PostgreSQL-specific syntax
     const orders = await prisma.$queryRaw<Order[]>`
       SELECT id, user_id, status, total, created_at
       FROM orders
@@ -1234,6 +1239,8 @@ app.get('/orders', async (req, res) => {
 <details>
 <summary>19. You need to add a non-null column with a default value and a new index to a table with 50 million rows in production — walk through the migration steps that avoid locking the table, show the SQL commands, explain why a naive ALTER TABLE would cause downtime, and what tools or techniques help (CREATE INDEX CONCURRENTLY, backfill strategies)</summary>
 
+Building on the safe migration patterns from question 12 (which covers DDL locking behavior for each operation type), here's the full end-to-end sequence for this specific scenario.
+
 ### Why the naive approach causes downtime
 
 ```sql
@@ -1242,7 +1249,7 @@ ALTER TABLE orders ADD COLUMN priority INT NOT NULL DEFAULT 0;
 CREATE INDEX idx_orders_priority ON orders (priority);
 ```
 
-On PostgreSQL < 11, `ADD COLUMN ... DEFAULT` rewrites the entire table (50M rows) while holding an **ACCESS EXCLUSIVE** lock — blocking ALL reads and writes. Even on PG 11+ where the default is stored in the catalog (instant), adding `NOT NULL` still requires scanning every row to validate no NULLs exist, holding the lock for that duration.
+On PostgreSQL < 11, `ADD COLUMN ... DEFAULT` rewrites the entire table (50M rows) while holding an **ACCESS EXCLUSIVE** lock — blocking ALL reads and writes. On PG 11+, `ADD COLUMN type NOT NULL DEFAULT value` as a single statement is instant — the default is stored in the catalog and PostgreSQL knows all existing rows will have that value, so no NULL scan is needed. However, if you add a nullable column first and later try to add `NOT NULL` as a separate `ALTER COLUMN SET NOT NULL`, PostgreSQL must scan every row to verify no NULLs exist, holding an ACCESS EXCLUSIVE lock for the duration. The safe multi-step approach below is still preferred because the naive single-statement `CREATE INDEX` that follows it causes locking issues regardless.
 
 `CREATE INDEX` (without `CONCURRENTLY`) takes a **SHARE** lock — blocks writes for the entire build duration (minutes on 50M rows).
 
@@ -1352,7 +1359,9 @@ WHERE indexrelid = 'idx_orders_priority'::regclass;
 
 </details>
 
-## Practical — Production Operations<details>
+## Practical — Production Operations
+
+<details>
 <summary>20. Your API response times have degraded from 50ms to 2 seconds over the past week — walk through the systematic database diagnosis: checking pg_stat_activity for blocked queries, identifying the slow query with pg_stat_statements, running EXPLAIN ANALYZE, checking for missing indexes, bloated tables, or lock contention, and applying the fix</summary>
 
 ### Step 1: Check for active problems — pg_stat_activity
@@ -1647,6 +1656,8 @@ FROM pg_stat_replication;
 ### 4. Table bloat
 
 **What to track:**
+
+Use the same `pg_stat_user_tables` query from question 20 (Step 5) to check dead tuple ratios, adding `last_autoanalyze` for completeness:
 
 ```sql
 SELECT relname, n_live_tup, n_dead_tup,

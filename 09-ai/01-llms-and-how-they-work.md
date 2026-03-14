@@ -31,10 +31,9 @@ Knowledge recall works similarly — facts are encoded in the model's billions o
 **Fundamental limitations that scale cannot fix:**
 
 - **No persistent state or working memory.** The model has no scratchpad beyond the context window. It cannot go back and revise earlier tokens in its output. Each token is committed the moment it is generated, which means early errors in a reasoning chain propagate and compound.
-- **No world model or grounding.** The model has never experienced the world — it learned patterns from text about the world. It cannot verify its own claims against reality. This is why hallucination is inherent, not a bug to be patched.
+- **No world model or grounding.** The model has never experienced the world — it learned patterns from text about the world. It cannot verify its own claims against reality, and even with temperature 0 it selects the most *likely* token, not the *correct* one. This is why hallucination is inherent, not a bug to be patched — for tasks requiring guaranteed correctness (formal verification, precise arithmetic), probabilistic token selection is a fundamental mismatch.
 - **No true planning.** Autoregressive generation is left-to-right. The model cannot "look ahead" to plan the structure of a complex answer before starting to write it. Chain-of-thought prompting works around this by letting the model use its own output tokens as a scratchpad, but this is a workaround, not a fix.
 - **Training data as a ceiling.** The model can only recombine patterns it has seen. It cannot reason about genuinely novel concepts that have no analog in its training data, and it has no mechanism to know what it does not know.
-- **Probabilistic, not deterministic.** Even with temperature 0, the model is selecting the most likely next token, not the "correct" one. For tasks requiring guaranteed correctness (formal verification, precise arithmetic), this is a fundamental mismatch.
 
 </details>
 
@@ -140,8 +139,7 @@ Additionally, positional encodings must support the sequence length. Models trai
 - **Sparse attention** (e.g., Longformer, BigBird): Instead of full n×n attention, each token attends only to nearby tokens (local window) plus a few global tokens. Reduces cost to O(n) but loses some ability to model long-range dependencies directly.
 - **Sliding window attention** (e.g., Mistral): Each token attends only to the previous W tokens (the window). Information propagates to distant tokens through multiple layers — layer 1 sees W tokens, layer 2 effectively sees 2W, etc. Very memory-efficient but relies on information "percolating" through layers.
 - **RoPE extensions** (e.g., YaRN, NTK-aware scaling): Rotary Position Embeddings encode position as rotations in the embedding space. Extensions modify the rotation frequencies to extrapolate beyond the trained context length. This allows extending context without full retraining, but quality still degrades beyond a certain point.
-- **Multi-Query Attention / Grouped-Query Attention (GQA):** Reduces KV-cache memory by sharing key/value heads across query heads. Does not change the theoretical O(n²) cost but dramatically reduces the memory bottleneck for long contexts.
-- **Ring Attention / Sequence parallelism:** Distributes the attention computation across multiple GPUs, each handling a chunk of the sequence. Enables very long contexts (1M+) at the cost of inter-GPU communication overhead.
+- **Other approaches:** Grouped-Query Attention (GQA) reduces KV-cache memory by sharing key/value heads, easing the memory bottleneck for long contexts. Ring Attention distributes attention computation across GPUs to enable 1M+ token contexts at the cost of inter-GPU communication overhead.
 
 **Tradeoffs of longer-context models:**
 
@@ -197,9 +195,7 @@ Temperature scales the logits (raw scores) before softmax. The formula: `P(token
 
 **Top-k:**
 
-After computing probabilities, only the top k tokens are kept; all others are set to zero probability and the remaining probabilities are renormalized. `top_k = 50` means only the 50 most likely tokens can be selected.
-
-Problem: a fixed k does not adapt to the shape of the distribution. Sometimes the model is very confident (2-3 tokens hold 95% probability), and k = 50 includes many irrelevant tokens. Other times the model is uncertain, and k = 50 might cut off plausible options.
+After computing probabilities, only the top k tokens are kept; all others are set to zero probability and the remaining probabilities are renormalized. `top_k = 50` means only the 50 most likely tokens can be selected. The downside is that a fixed k does not adapt to distribution shape — sometimes k = 50 includes too many irrelevant tokens, other times it cuts off plausible options.
 
 **Top-p (nucleus sampling):**
 
@@ -211,11 +207,9 @@ This adapts dynamically — when the model is confident, only a few tokens are k
 
 | Use case | Temperature | Top-p | Reasoning |
 |----------|------------|-------|-----------|
-| **Code generation** | 0.0 - 0.2 | 0.9 - 0.95 | Code has strict correctness requirements. Low temperature favors the most likely (usually correct) syntax. |
-| **Factual Q&A** | 0.0 - 0.3 | 0.9 | Accuracy matters more than variety. Near-greedy decoding avoids invented facts. |
+| **Code generation** | 0.0 - 0.2 | 0.9 - 0.95 | Strict correctness — low temperature favors the most likely (usually correct) syntax. |
+| **Factual Q&A** | 0.0 - 0.3 | 0.9 | Accuracy over variety. Near-greedy decoding avoids invented facts. |
 | **Creative writing** | 0.7 - 1.0 | 0.9 - 0.95 | Higher temperature introduces variety and unexpected word choices. |
-| **Brainstorming** | 0.8 - 1.2 | 0.95 | Maximum diversity. Even unusual ideas are valuable. |
-| **Structured output (JSON)** | 0.0 | 1.0 | Deterministic output ensures valid structure. |
 
 Temperature and top-p are typically used together. Top-k is less common in modern APIs but still available in some.
 
@@ -396,10 +390,6 @@ The best prompts typically combine a focused system prompt with 1-2 few-shot exa
 4. Your application receives the tool call, executes the actual function, and sends the result back to the model.
 5. The model incorporates the function result and generates its final response (or calls another tool).
 
-**How the model selects which function to call:**
-
-The model treats tool selection as a next-token prediction problem. The tool descriptions and schemas are injected into the prompt (usually as a special system message). Based on the user's query and the available tools, the model predicts which tool is most appropriate. The description and parameter names are critical — they are the model's only guide for selection. A well-described tool gets selected correctly; a poorly described one gets misused or ignored.
-
 **Why this is transformative:**
 
 Without function calling, LLMs are pure text-in/text-out systems. They cannot:
@@ -409,6 +399,10 @@ Without function calling, LLMs are pure text-in/text-out systems. They cannot:
 - Access private/current information not in training data
 
 Function calling turns the LLM from a text generator into an **orchestrator** that can reason about which tools to use, in what order, and how to combine results. The model handles the natural language understanding and planning; the tools handle reliable execution.
+
+**How the model selects which function to call:**
+
+The model treats tool selection as a next-token prediction problem. The tool descriptions and schemas are injected into the prompt (usually as a special system message). Based on the user's query and the available tools, the model predicts which tool is most appropriate. The description and parameter names are critical — they are the model's only guide for selection. A well-described tool gets selected correctly; a poorly described one gets misused or ignored.
 
 **Multi-step tool use:**
 
@@ -590,7 +584,11 @@ async function streamCompletion(
     }
   }
 }
+```
 
+The streaming logic above handles retries and partial responses. Here is how to expose it as an SSE endpoint:
+
+```typescript
 // --- Express SSE endpoint example ---
 import express from "express";
 const app = express();
@@ -671,7 +669,8 @@ function chunkDocument(
   let chunkIndex = 0;
 
   for (const para of paragraphs) {
-    // Approximate token count (1 token ≈ 4 chars)
+    // Approximate token count (1 token ≈ 4 chars for English text;
+    // varies by language/content — production systems should use tiktoken)
     const combinedLength = (current.length + para.length) / 4;
 
     if (combinedLength > CHUNK_SIZE && current.length > 0) {
@@ -1001,6 +1000,8 @@ async function chat(
 <details>
 <summary>18. Your RAG-powered support bot is returning answers that are factually wrong despite the correct documents being in the knowledge base — walk through the exact debugging steps you'd take at each stage (query embedding, retrieval results, chunk inspection, prompt sent to the model, model output) with specific commands or code to test each stage, and show how you identify whether the problem is retrieval, chunking, or generation.</summary>
 
+This applies the diagnostic framework from question 13 to a concrete scenario with specific code at each debugging step.
+
 **Step 1: Reproduce with a specific failing query**
 
 Start with a concrete example: "What is the return policy for electronics?" where the bot says "30 days" but the correct answer is "15 days for electronics."
@@ -1265,7 +1266,12 @@ These questions test real-world experience. Prepare by mapping them to your own 
 
 **Example outline to personalize:**
 
-"We needed to build [a support chatbot / a document Q&A system / an internal tool]. I evaluated [fine-tuning vs RAG vs pure prompting] and chose [X] because [our knowledge base updated weekly / we didn't have training data / latency requirements]. The key architecture decision was [using RAG with chunked documents / implementing streaming for UX / adding a validation layer]. In production, we hit [hallucination on edge cases / cost scaling issues / latency spikes with long contexts]. I fixed this by [adding retrieval thresholds / implementing caching / optimizing chunk sizes]. We measured success with [accuracy on a test set of 200 questions / reduction in support tickets / user satisfaction scores]."
+- **Situation:** "We needed to build [a support chatbot / a document Q&A system / an internal tool] because [support volume was growing / engineers spent hours searching docs]."
+- **Task:** "I was responsible for [the LLM integration architecture / the full pipeline from ingestion to serving]."
+- **Action — Architecture:** "I evaluated [fine-tuning vs RAG vs pure prompting] and chose [X] because [our knowledge base updated weekly / we didn't have training data / latency requirements]. The key design decision was [using RAG with chunked documents / implementing streaming for UX / adding a validation layer]."
+- **Action — Challenges:** "In production, we hit [hallucination on edge cases / cost scaling issues / latency spikes with long contexts]. I fixed this by [adding retrieval thresholds / implementing caching / optimizing chunk sizes]."
+- **Result:** "We measured success with [accuracy on a test set of 200 questions / reduction in support tickets / user satisfaction scores]."
+- **Reflection:** "If I did it again, I would [start with RAG from day one / invest more in chunking quality / add monitoring earlier]."
 
 </details>
 

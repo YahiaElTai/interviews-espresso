@@ -322,28 +322,7 @@ async function callWithBudget(service: Service, budget: TimeoutBudget) {
 
 In a distributed system, messages will be delivered more than once. The broker retries on timeout, the consumer crashes after processing but before ACKing, network partitions cause redelivery. Without idempotency, "deduct $50" processed twice means the customer loses $100.
 
-An idempotency key is a unique identifier (usually from the producer) that lets the consumer detect and skip duplicates:
-
-```typescript
-async function processPayment(event: PaymentEvent) {
-  // Use the event's unique ID as the idempotency key
-  const existing = await db.payment.findUnique({
-    where: { idempotencyKey: event.eventId },
-  });
-  if (existing) return existing; // already processed
-
-  return db.payment.create({
-    data: {
-      idempotencyKey: event.eventId,
-      orderId: event.orderId,
-      amount: event.amount,
-      status: 'captured',
-    },
-  });
-}
-```
-
-The check and create must be atomic (unique constraint on the idempotency key column handles this -- the second insert fails with a conflict).
+An idempotency key is a unique identifier (usually from the producer) that lets the consumer detect and skip duplicates. The pattern is the same as shown in question 6: check for an existing record by the idempotency key, return early if found, otherwise create. A unique constraint on the idempotency key column ensures atomicity -- the second insert fails with a conflict rather than creating a duplicate.
 
 **The dual-write problem:**
 
@@ -569,10 +548,10 @@ const processor = featureFlags.useRemotePayment
 Before cutting over, run both implementations simultaneously and compare results. The monolith code is the "source of truth"; the new service is the "candidate." Both process the same request, but only the monolith's result is returned to the user.
 
 ```typescript
-async function chargeWithValidation(orderId: string, amount: number) {
+async function getOrderDetailsWithValidation(orderId: string) {
   const [monolithResult, serviceResult] = await Promise.allSettled([
-    localProcessor.charge(orderId, amount),
-    remoteProcessor.charge(orderId, amount),
+    localOrderRepo.getOrderDetails(orderId),
+    remoteOrderService.getOrderDetails(orderId),
   ]);
 
   // Compare results, log discrepancies
@@ -795,33 +774,20 @@ Each service maps to a distinct business capability with its own data, its own l
 
 **API Contracts between services:**
 
+Each service exposes standard REST CRUD endpoints scoped to its domain. Representative examples:
+
 ```
 Order Service:
-  POST   /orders              (create order)
-  GET    /orders/:id           (get order details)
-  PATCH  /orders/:id/status    (update status — internal)
+  POST /orders, GET /orders/:id, PATCH /orders/:id/status
 
 Inventory Service:
-  POST   /reservations         (reserve stock for an order)
-  DELETE /reservations/:orderId (release reservation)
-  GET    /stock/:sku           (check availability)
+  POST /reservations, DELETE /reservations/:orderId, GET /stock/:sku
 
 Payment Service:
-  POST   /charges              (charge a payment method)
-  POST   /refunds              (issue refund)
-
-Shipping Service:
-  POST   /shipments            (schedule shipment)
-  GET    /shipments/:orderId   (track shipment)
-
-Catalog Service:
-  GET    /products/:id         (product details + price)
-  GET    /products?search=     (search products)
-
-User Service:
-  GET    /users/:id            (user profile)
-  POST   /auth/token           (authenticate, issue JWT)
+  POST /charges, POST /refunds
 ```
+
+The other services (Shipping, Catalog, User) follow the same pattern — thin REST interfaces that expose only what other services need. The key constraint: services never expose internal data models, only the operations other services need to trigger.
 
 **Communication patterns — synchronous vs async:**
 
@@ -915,23 +881,15 @@ interface ReservationFailed {
 }
 
 // === Payment Service ===
+// Each handler uses the idempotent check-then-create pattern from question 6
 async function handleOrderPlaced(event: OrderPlaced) {
-  // Idempotency: check if already processed
-  const existing = await db.payment.findUnique({
-    where: { idempotencyKey: event.orderId },
-  });
-  if (existing) return;
+  const existing = await db.payment.findUnique({ where: { idempotencyKey: event.orderId } });
+  if (existing) return; // idempotent — already processed
 
   try {
     const payment = await chargeCard(event.userId, event.totalAmount);
     await db.payment.create({
-      data: {
-        id: payment.id,
-        idempotencyKey: event.orderId,
-        orderId: event.orderId,
-        amount: event.totalAmount,
-        status: 'captured',
-      },
+      data: { id: payment.id, idempotencyKey: event.orderId, orderId: event.orderId, amount: event.totalAmount, status: 'captured' },
     });
     await publish({ type: 'PaymentCaptured', orderId: event.orderId, paymentId: payment.id, amount: event.totalAmount });
   } catch (err) {
@@ -1279,7 +1237,7 @@ function authenticate(req: express.Request, res: express.Response, next: express
   }
 }
 
-// === 3. Rate Limiting Middleware (sliding window with Redis) ===
+// === 3. Rate Limiting Middleware (fixed window counter with Redis) ===
 function rateLimit(maxRequests: number, windowSeconds: number) {
   return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Rate limit by API key or IP
@@ -1331,6 +1289,8 @@ app.listen(8080);
 ```
 
 **Production gateway configuration (NGINX example for comparison):**
+
+Note: The NGINX config below uses a per-second rate (10r/s) rather than the per-minute rate in the Express example — this is intentional, as NGINX's `limit_req_zone` only supports per-second rates natively. Both achieve the same goal with different granularity.
 
 ```nginx
 upstream order_service {

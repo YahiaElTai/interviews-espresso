@@ -583,12 +583,26 @@ async function processPayment(req: Request) {
     return existing.response; // Return the stored response
   }
 
-  // Process the payment
+  // Atomically claim the idempotency key (prevents race between duplicate requests)
+  const claimed = await db.query(
+    `INSERT INTO idempotency_keys (key, status, created_at)
+     VALUES ($1, 'processing', NOW())
+     ON CONFLICT (key) DO NOTHING
+     RETURNING key`,
+    [idempotencyKey]
+  );
+
+  if (!claimed) {
+    // Another request claimed it first — wait briefly and return its result
+    return retryUntilComplete(idempotencyKey);
+  }
+
+  // Process the payment (only one request reaches here per key)
   const result = await chargeCustomer(req.body);
 
-  // Store the result with the idempotency key (atomically)
+  // Store the response so retries can return the same result
   await db.query(
-    'INSERT INTO idempotency_keys (key, response, created_at) VALUES ($1, $2, NOW())',
+    `UPDATE idempotency_keys SET response = $2, status = 'complete' WHERE key = $1`,
     [idempotencyKey, JSON.stringify(result)]
   );
 
@@ -915,7 +929,7 @@ Sharding splits a single dataset across multiple database instances (shards), ea
 - **Pro:** Even distribution — a good hash function spreads data uniformly regardless of key patterns
 - **Pro:** Simple to implement — deterministic mapping from key to shard
 - **Con:** Range queries are impossible — "all users with IDs 1000-2000" must query every shard because the hash scatters them
-- **Con:** Adding/removing shards requires rehashing most keys (N-1/N records move). Consistent hashing (question 23) solves this.
+- **Con:** Adding/removing shards requires rehashing most keys (~N/(N+1) records move when going from N to N+1 shards). Consistent hashing (question 23) solves this.
 - **When it causes hot spots:** When many records share the same shard key value. If you shard by `userId` and one user generates 50% of all writes (a celebrity on a social platform), that user's shard becomes a hot spot. The hash distributes users evenly, but can't distribute one user's traffic across shards.
 
 **Range-based sharding:** Assign contiguous ranges of the shard key to each shard. E.g., shard 1 holds users A-F, shard 2 holds G-L, etc. Or by date: shard 1 holds January data, shard 2 holds February.

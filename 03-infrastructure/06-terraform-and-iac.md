@@ -119,7 +119,7 @@ Remote state also enables CI/CD — your pipeline needs access to state, and it 
 
 **How state locking works:**
 
-When `terraform apply` starts, it acquires a lock on the state file (GCS uses a `.tflock` object, S3 uses a DynamoDB table). If another operation is already running, Terraform refuses to proceed:
+When `terraform apply` starts, it acquires a lock on the state file (GCS supports locking natively without additional configuration; S3 traditionally uses a DynamoDB table, though as of Terraform v1.10+ S3 also supports native locking via `use_lockfile = true`, making DynamoDB the legacy approach). If another operation is already running, Terraform refuses to proceed:
 
 ```
 Error: Error locking state: Error acquiring the state lock
@@ -350,7 +350,9 @@ SOPS encrypts variable files at rest. You store `secrets.enc.yaml` in git (encry
 
 </details>
 
-## Practical — HCL & Configuration<details>
+## Practical — HCL & Configuration
+
+<details>
 <summary>9. Show examples of `count` vs `for_each` in HCL and explain when each one breaks — demonstrate a scenario where using `count` with a list causes resources to be unnecessarily destroyed and recreated when an item is removed from the middle of the list, and show how `for_each` with a map or set avoids this problem</summary>
 
 **`count` — index-based identification:**
@@ -684,7 +686,9 @@ This is a safety net against accidental database deletion — the most catastrop
 
 **When to use it**: Production databases, persistent storage buckets with important data, IAM resources, anything where destruction means data loss. Don't use it on ephemeral or easily recreatable resources — it just adds friction for no safety benefit.
 
-</details><details>
+</details>
+
+<details>
 <summary>13. Write a reusable Terraform module for a common infrastructure pattern (e.g., a GCS bucket with IAM bindings or a VPC with subnets) -- show the directory structure, variables.tf with sensible defaults and validation, outputs.tf exposing necessary values, and how the calling root module consumes it. Explain what makes this module easy vs hard to reuse across teams and how you'd version it using git tags</summary>
 
 **Directory structure:**
@@ -868,12 +872,10 @@ resource "google_cloud_run_service" "app" {
 - Outputs expose what consumers actually need (name, URL, self_link)
 - No hardcoded organizational assumptions baked into the module
 
-**What makes modules hard to reuse:**
+**What kills reusability:**
 
-- Too many required variables with no defaults (forces every consumer to specify everything)
-- Hardcoded values that only work for one team (e.g., specific project IDs, naming prefixes)
-- Missing outputs — consumers need to reach into the module's internal resources
-- Coupling unrelated concerns (a module that creates a bucket AND a Cloud Function AND IAM roles for a specific app)
+- Coupling unrelated concerns into one module (a bucket AND a Cloud Function AND app-specific IAM — now every consumer gets all or nothing)
+- Hardcoded values that bake in one team's assumptions (specific project IDs, naming conventions)
 
 **Versioning with git tags:**
 
@@ -884,7 +886,11 @@ git push origin v1.2.0
 
 Consumers pin to a version with `?ref=v1.2.0`. Breaking changes (removed variables, changed behavior) get a major version bump. This lets teams upgrade on their own schedule instead of being forced by upstream changes.
 
-</details>## Practical — CI/CD & Production Workflows
+</details>
+
+---
+
+## Practical — CI/CD & Production Workflows
 
 <details>
 <summary>14. Design a CI/CD workflow for Terraform where `plan` runs on pull requests and `apply` runs on merge to main — show the pipeline configuration (e.g., CircleCI or GitHub Actions YAML), explain what guardrails you'd add (plan output as PR comment, manual approval for production, policy checks), and how you prevent two merges from racing to apply conflicting changes</summary>
@@ -917,7 +923,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.9.0
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -936,6 +942,7 @@ jobs:
 
       - name: Terraform Plan
         id: plan
+        # -out=tfplan writes inside $TF_DIR; tee writes plan_output.txt to workspace root
         run: terraform -chdir=$TF_DIR plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
         continue-on-error: true
 
@@ -968,7 +975,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.9.0
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -1101,7 +1108,7 @@ terraform {
 }
 ```
 
-GCS backends have state locking built in — no additional configuration needed. Terraform uses a `.tflock` object in the same bucket.
+GCS backends have state locking built in — no additional configuration needed.
 
 **S3 backend configuration (AWS):**
 
@@ -1117,7 +1124,7 @@ terraform {
 }
 ```
 
-S3 requires a separate DynamoDB table for locking (GCS handles it natively — one of GCS's advantages).
+S3 locking has two options (as covered in Q4): the legacy approach uses a separate DynamoDB table, while Terraform v1.10+ supports native S3 locking via `use_lockfile = true`. GCS handles locking natively with no extra configuration.
 
 **Initialization process:**
 

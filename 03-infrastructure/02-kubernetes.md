@@ -41,7 +41,7 @@ Kubernetes separates concerns into composable primitives so each one can evolve 
 
 **Namespace** — a logical boundary for resource isolation. It solves multi-tenancy within a cluster: different teams or environments (dev, staging) can share a cluster while having separate RBAC rules, resource quotas, and network policies. Resources in different namespaces can have the same name without conflicting.
 
-**How they compose:** A Deployment creates pods with specific labels. A Service selects those pods by label and routes traffic to them. A Namespace scopes all of these resources, so you can have `api-service` in both `staging` and `production` namespaces without collision. This separation means you can change how traffic is routed (Service) without touching how pods are managed (Deployment), or change scaling (Deployment replicas) without touching networking.
+**How they compose:** A Deployment creates pods with specific labels, a Service selects those pods by label and routes traffic to them, and a Namespace scopes everything so you can have `api-service` in both `staging` and `production` without collision. This separation lets you change routing, scaling, or isolation independently.
 
 </details>
 
@@ -161,8 +161,6 @@ The resolver tries each search domain in order:
 - You have fewer than 5 services and no plans to grow significantly
 - The primary motivation is "it's industry standard" rather than solving a specific operational problem
 - You're spending more time on cluster operations than on application development
-- You're running a managed K8s service (EKS/GKE) but treating it like it's zero-ops — managed still requires significant K8s knowledge for debugging, upgrades, networking, and RBAC
-- The team is copying Helm charts from the internet without understanding what they deploy
 
 **Cost tradeoffs:** K8s itself is free, but the real cost is engineering time. Cluster upgrades, node management, monitoring the control plane, debugging networking issues, managing RBAC — this work is invisible until something breaks. A managed K8s service (EKS/GKE/AKS) reduces but doesn't eliminate this. Budget at least 20-30% of one platform engineer's time for ongoing K8s operations.
 
@@ -584,6 +582,8 @@ Sidecars are regular containers in the same pod — they start alongside the mai
 
 **Gotcha with migrations in init containers:** If you have 3 replicas, all 3 pods run the init container. Make sure your migration script is idempotent — it should be safe to run concurrently or multiple times. Alternatively, run migrations as a separate Job (as covered in question 7) rather than an init container, so it runs exactly once regardless of replica count.
 
+**Native sidecars (Kubernetes 1.28+):** K8s 1.28 introduced native sidecar support via `restartPolicy: Always` on init containers. These "sidecar containers" start before the main containers (like init containers) but run for the pod's entire lifetime (like traditional sidecars). This solves the longstanding issue where traditional sidecars (regular containers) had no guaranteed startup ordering and no clean shutdown coordination with the main container. For new clusters on 1.28+, prefer native sidecars over the traditional pattern for proxies, log shippers, and monitoring agents.
+
 </details>
 
 <details>
@@ -822,6 +822,7 @@ kind: Deployment
 metadata:
   name: api
 spec:
+  # ... replicas, selector, template.metadata.labels omitted for brevity
   template:
     spec:
       affinity:
@@ -1424,6 +1425,27 @@ spec:
 ```
 
 The `checksum/config` annotation forces a rolling restart when the ConfigMap changes (as discussed in question 11).
+
+**templates/_helpers.tpl — reusable template snippets:**
+
+```yaml
+{{- define "my-api.fullname" -}}
+{{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "my-api.selectorLabels" -}}
+app.kubernetes.io/name: {{ .Chart.Name }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "my-api.labels" -}}
+{{ include "my-api.selectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+```
+
+These helpers are referenced via `{{ include "my-api.fullname" . }}` in the templates above. Centralizing labels and names here keeps templates DRY and ensures consistency across all resources in the chart.
 
 **Values overrides — `--set` vs `-f`:**
 
