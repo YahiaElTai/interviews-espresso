@@ -31,22 +31,29 @@ This repo uses dedicated **agents** (`.claude/agents/`) to execute **skills** (`
 
 **Always use agents to execute skills** — do not run skills directly in the main conversation. Delegate to the appropriate agent instead. This keeps the main context clean and ensures consistent, high-quality output.
 
-| Agent | What it does |
-|---|---|
-| `distill-light` | Light trim (~10-15% cut) for core-stack topics (Node.js, TypeScript) — only removes tooling trivia and topics belonging to other interview rounds. Preserves all senior-level depth. |
-| `distill` | Standard trim (~30-40% cut) for non-core topics — deletes niche summary bullets and their corresponding questions. |
-| `review-summary` | Reviews summary bullets for completeness. Ensures important concepts are covered without going too niche. |
-| `fix-summary` | Applies coverage report fixes to a topic file's summary bullets, then deletes the report. |
-| `generate-questions` | Generates 20-40 interview questions from a file's summary bullets. |
-| `review-questions` | Reviews questions for quality, compliance with guidelines, and structural correctness. Outputs a violation report. |
-| `fix-questions` | Applies violation report fixes to a topic file's questions (splits, adds, removes, rewrites), then deletes the report. |
-| `apply-checklist` | Cross-references a topic file against `checklists.md` and applies missing coverage — adds summary bullets and questions in one pass. |
-| `generate-answers` | Fills in senior-level answers for all questions. Batches of 20, stops after each batch. Resumable — skips already-answered questions. Uses context7 for accuracy. |
-| `review-answers` | Reviews answers for quality, compliance with the 5 Pillars. Outputs an answer review report. Uses context7 for accuracy checks. |
-| `fix-answers` | Applies answer review report fixes to a topic file's answers, then deletes the report. Uses context7 for accuracy verification. |
+| Agent                | What it does                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `distill-light`      | Light trim (~10-15% cut) for core-stack topics (Node.js, TypeScript) — only removes tooling trivia and topics belonging to other interview rounds. Preserves all senior-level depth. |
+| `distill`            | Standard trim (~30-40% cut) for non-core topics — deletes niche summary bullets and their corresponding questions.                                                                   |
+| `review-summary`     | Reviews summary bullets for completeness. Ensures important concepts are covered without going too niche.                                                                            |
+| `fix-summary`        | Applies coverage report fixes to a topic file's summary bullets, then deletes the report.                                                                                            |
+| `generate-questions` | Generates 20-40 interview questions from a file's summary bullets.                                                                                                                   |
+| `review-questions`   | Reviews questions for quality, compliance with guidelines, and structural correctness. Outputs a violation report.                                                                   |
+| `fix-questions`      | Applies violation report fixes to a topic file's questions (splits, adds, removes, rewrites), then deletes the report.                                                               |
+| `apply-checklist`    | Cross-references a topic file against `checklists.md` and applies missing coverage — adds summary bullets and questions in one pass.                                                 |
+| `generate-answers`   | Fills in senior-level answers for all questions. Batches of 20, stops after each batch. Resumable — skips already-answered questions. Uses context7 for accuracy.                    |
+| `review-answers`     | Reviews answers for quality, compliance with the 5 Pillars. Outputs an answer review report. Uses context7 for accuracy checks.                                                      |
+| `fix-answers`        | Applies answer review report fixes to a topic file's answers, then deletes the report. Uses context7 for accuracy verification.                                                      |
 
 **Distillation strategy**: Use `distill-light` for `01-core-stack/` topics (primary tools — interviewers go deep here). Use `distill` for everything else.
 
 **Espresso workflow**: Distill (light or standard) → Generate answers → Review answers → Fix answers.
 
 **Full workflow** (if needed): Review summary → Fix summary → Generate questions → Review questions → Fix questions → Apply checklist → Generate answers → Review answers → Fix answers.
+
+## Pending Content Additions
+
+Topics that need summary bullets, questions, and answers added to existing files:
+
+- **ArgoCD** → `03-infrastructure/04-ci-cd.md` — GitOps model, app-of-apps pattern, sync policies, health checks, rollback, multi-environment promotion, traceability (image SHA → git commit)
+- **Argo Rollouts** → `03-infrastructure/02-kubernetes.md` — replaces Deployment for advanced rollout strategies (canary with traffic splitting, blue-green with analysis), AnalysisRun, progressive delivery, automatic rollback on metric failure
