@@ -344,16 +344,18 @@ You can roll back a deployment (revert a commit in `uaa-gitops`) without touchin
 
 ### Serenity — the bridge bot
 
-Serenity (`ct-serenity-prod[bot]`) is an internal commercetools tool that automates image promotion to `uaa-gitops`. It is **not** an autonomous watcher — it is invoked directly by CircleCI during the deploy job, with the new image SHA passed to it explicitly.
+Serenity (`ct-serenity-prod[bot]`) is an internal commercetools tool that automates image promotion to `uaa-gitops`. It is **not** an autonomous watcher — it is invoked directly by CircleCI as two separate commands at different points in the pipeline.
 
-When called, Serenity:
+**`serenity sync`** — creates the PRs in `uaa-gitops`:
 
 1. Reads `serenity.yaml` to know which clusters and values files to target
 2. Takes the Helm chart from `agent-gateway-services/k8s/agent-gateway/`, overrides `dockerImageDigest` with the new SHA, and runs `helm template` to produce rendered YAML. The values files (e.g. `k8s/agent-gateway/values/ctp_staging_aws_eu-central-1_v1.yaml`) stay in `agent-gateway-services` — they are render inputs, not committed to `uaa-gitops`
-3. Commits the rendered `manifest.yaml` to `uaa-gitops` for each configured cluster, also bumping `rollout/restartedAt`
-4. Opens a PR into `{env}/live`, auto-merges if `autoMerge: true` is set
+3. Commits the rendered `manifest.yaml` to `uaa-gitops` for each configured cluster across **both staging and production**, also bumping `rollout/restartedAt`
+4. Opens PRs into `staging/live` and `production/live` — but does **not** merge them
 
-Each service has a `serenity.yaml` in `k8s/<service>/serenity.yaml` inside `agent-gateway-services`. This is the config Serenity reads when it runs — it defines which clusters to target, which values files to use, and whether to auto-merge:
+**`serenity approve --env=<env>`** — merges the open PR for that specific environment. Called separately for staging and production, each gated behind its own CircleCI approval step.
+
+Each service has a `serenity.yaml` in `k8s/<service>/serenity.yaml` inside `agent-gateway-services`. This defines which clusters to target and which values files to use for each environment:
 
 **`k8s/agent-gateway/serenity.yaml`:**
 
@@ -361,15 +363,26 @@ Each service has a `serenity.yaml` in `k8s/<service>/serenity.yaml` inside `agen
 chart: .
 name: agent-gateway
 staging:
-  autoMerge: true
   clusters:
     - name: stg-aws-eu-central1-v1
       valuesFile: ./values/ctp_staging_aws_eu-central-1_v1.yaml
     - name: stg-gcp-eu-west1-v1
       valuesFile: ./values/ctp_staging_gcp_europe-west1_v1.yaml
+production:
+  clusters:
+    - name: prd-aws-eu-central1-v1
+      valuesFile: ./values/ctp_production_aws_eu-central-1_v1.yaml
+    - name: prd-aws-us-east2-v1
+      valuesFile: ./values/ctp_production_aws_us-east-2_v1.yaml
+    - name: prd-gcp-us-central1-v1
+      valuesFile: ./values/ctp_production_gcp_us-central1_v1.yaml
+    - name: prd-gcp-eu-west1-v1
+      valuesFile: ./values/ctp_production_gcp_europe-west1_v1.yaml
+    - name: prd-gcp-au-southeast1-v1
+      valuesFile: ./values/ctp_production_gcp_australia-southeast1_v1.yaml
 ```
 
-Notice there is no `production` block. Production promotion is handled by Serenity internally once staging is healthy — it has its own promotion logic separate from the staging sync.
+Both staging and production are defined here. `serenity sync` creates PRs for all environments in one shot; `serenity approve` merges them selectively by env.
 
 ### What `uaa-gitops` actually contains
 
@@ -418,14 +431,17 @@ uaa-gitops/
 
 ### Environments and clusters
 
-For agent-gateway there are 4 ArgoCD Applications (one per cluster):
+For agent-gateway there are 7 ArgoCD Applications (one per cluster):
 
-| ArgoCD App name                        | Environment | Cloud/Region           |
-| -------------------------------------- | ----------- | ---------------------- |
-| `agent-gateway-prd-aws-eu-central1-v1` | Production  | AWS Europe (Frankfurt) |
-| `agent-gateway-prd-aws-us-east2-v1`    | Production  | AWS US (Virginia)      |
-| `agent-gateway-stg-aws-eu-central1-v1` | Staging     | AWS Europe (Frankfurt) |
-| `agent-gateway-stg-gcp-eu-west1-v1`    | Staging     | GCP Europe (Belgium)   |
+| ArgoCD App name                          | Environment | Cloud/Region           |
+| ---------------------------------------- | ----------- | ---------------------- |
+| `agent-gateway-prd-aws-eu-central1-v1`   | Production  | AWS Europe (Frankfurt) |
+| `agent-gateway-prd-aws-us-east2-v1`      | Production  | AWS US (Virginia)      |
+| `agent-gateway-prd-gcp-us-central1-v1`   | Production  | GCP US (Iowa)          |
+| `agent-gateway-prd-gcp-eu-west1-v1`      | Production  | GCP Europe (Belgium)   |
+| `agent-gateway-prd-gcp-au-southeast1-v1` | Production  | GCP Australia (Sydney) |
+| `agent-gateway-stg-aws-eu-central1-v1`   | Staging     | AWS Europe (Frankfurt) |
+| `agent-gateway-stg-gcp-eu-west1-v1`      | Staging     | GCP Europe (Belgium)   |
 
 ### Branches in uaa-gitops
 
@@ -457,37 +473,41 @@ As a UAA developer, you interact with this infrastructure by merging PRs to `age
 
 ## 8. The CircleCI Pipeline — How Builds and Deploys Work
 
-The pipeline lives in `.circleci/config/workflows/test-build-and-deploy.yml` and `.circleci/config/jobs/`. It has **two distinct phases** separated by manual approval gates — builds happen separately from pushes, and you explicitly choose when to deploy.
+The pipeline lives in `.circleci/config/workflows/test-build-and-deploy.yml` and `.circleci/config/jobs/`. It has **three distinct phases** separated by manual approval gates: build, sync (create PRs), and deploy (merge PRs).
 
 ### The full pipeline shape
 
 ```
-install_and_cache
+install_and_cache + vault_get_ci_secrets
        ↓
-[parallel] unit tests · typecheck · lint · k8s lint · b_backend (build only)
+[parallel] unit tests · typecheck · lint · k8s lint · build_application x3 (no push)
        ↓
-▶ can_d_all  ← MANUAL APPROVAL (gates everything below)
+▶ can_d  ← MANUAL APPROVAL (gates image push)
        ↓
-b_backend (push_image_to_repo: true)  ← NOW the image is actually pushed to GCR
+build_application x3 (push_image_to_repo: true)  ← images pushed to GCR for all 3 services
        ↓
-▶ can_d_staging            ▶ can_d_prod  ← separate MANUAL APPROVALs
-       ↓                          ↓
-d_backend (staging)         d_backend (production)  ← only runs on main branch
+sync_application x3 (serenity sync)  ← creates PRs in uaa-gitops for BOTH staging + production
+       ↓
+▶ can_d_staging              ▶ can_d_prod  ← separate MANUAL APPROVALs
+       ↓                            ↓
+deploy_application staging x3   deploy_application prod x3  ← serenity approve: merges the PRs
+(mcp-config → multitenant →     (mcp-config → multitenant →
+ agent-gateway, in order)        agent-gateway, in order)
 ```
 
 You cannot deploy without clicking approve at least twice. The build-only step confirms the Docker build works before you commit to pushing anything.
 
-### Job 1 — `b_backend`: build (and optionally push) the image
+### Job 1 — `build_application`: build (and optionally push) the image
 
-This job runs the `pnpm package` script for the service, which internally calls `docker/k8s-docker-build-push.sh`.
+This job runs `pnpm --filter "@commercetools-local/<service>*" run package` for the service.
 
-**When `push_image_to_repo: false`** (first run, before approval):
+**When `push_image_to_repo: false`** (first run, before `can_d` approval):
 
 - Builds the Docker image locally to verify it compiles
 - Does **not** push to GCR
 - Exits early
 
-**When `push_image_to_repo: true`** (after `can_d_all` approval):
+**When `push_image_to_repo: true`** (after `can_d` approval):
 
 - Builds the image again (using Docker layer cache from the first run)
 - Pushes two tags to GCR:
@@ -495,14 +515,9 @@ This job runs the `pnpm package` script for the service, which internally calls 
   gcr.io/commercetools-platform/agent-gateway/agent-gateway-api:latest
   gcr.io/commercetools-platform/agent-gateway/agent-gateway-api:<git-commit-sha>
   ```
-- Fetches the immutable **SHA digest** from the registry after push:
-  ```bash
-  DIGEST=$(docker inspect "$IMAGE:$COMMIT_SHA" \
-    --format='{{ index .RepoDigests 0 }}' | cut -d':' -f2)
-  # e.g. 3c2f0c67593967fab53024dc32f057c1edb04a85110fed04fab27fee52f44474
-  ```
+- Fetches the immutable **SHA digest** from the registry after push
 - Writes that digest to `.circleci/_docker_image_digests/agent-gateway-api`
-- **Persists that file to the CircleCI workspace** so the deploy job can read it later
+- **Persists that file to the CircleCI workspace** so the sync and deploy jobs can read it later
 
 The image is tagged with both `:latest` and `:<git-commit-sha>` at push time. This is the link between a Git commit SHA and the running image — if you look up a Docker SHA in GCR, you'll find it also has the git commit SHA as a tag, letting you trace exactly which code version produced that image.
 
@@ -520,15 +535,13 @@ agent-gateway-services @ 474f6035 → exact code that was deployed
 
 A better pattern exists and is already used in other repos at commercetools (e.g. audit-log): embed the git SHA directly as an annotation or label in the manifest, so it's visible in the ArgoCD UI and in `uaa-gitops` commit history without needing to go through GCR.
 
-Serenity doesn't currently support passing multiple dynamic values (it only takes the image digest). Once it does, the plan is to pass the git SHA alongside the image digest so it can be baked into the manifest — the same way audit-log does it today. One caveat: injecting a new value on every CI run would make every push update the manifest even if nothing deployment-relevant changed, which could trigger an unnecessary redeploy.
+For now, if you need to find out when a specific commit was deployed, the reliable path is: find the CircleCI pipeline run for that commit on main, look at the `sync_application` job, and match the Docker SHA it passed to Serenity against the ArgoCD sync history.
 
-For now, if you need to find out when a specific commit was deployed, the reliable path is: find the CircleCI pipeline run for that commit on main, look at the `d_backend` job, and match the Docker SHA it passed to Serenity against the ArgoCD sync history.
+### Job 2 — `sync_application`: create the gitops PRs with `serenity sync`
 
-### Job 2 — `d_backend`: call Serenity with the digest
+This job runs immediately after `build_application` pushes the images — no approval gate between them.
 
-After approval, this job:
-
-1. **Attaches the workspace** to get the digest file written by `b_backend`
+1. **Attaches the workspace** to get the digest file written by `build_application`
 2. **Reads the digest**:
    ```bash
    DIGEST=$(cat .circleci/_docker_image_digests/agent-gateway-api)
@@ -541,30 +554,46 @@ After approval, this job:
      --config-file="k8s/agent-gateway/serenity.yaml" \
      --image-tag="${IMAGE_DIGEST}" \
      --image-tag-value-path="agentGatewayApi.dockerImageDigest" \
-     --sideload="true"   # true = staging only, false = include production
      --wait=true
    ```
 
+`serenity sync` reads `serenity.yaml`, renders the Helm chart for **every cluster across both staging and production**, commits the manifest files to `uaa-gitops`, and opens PRs into `staging/live` and `production/live`. It does **not** merge them.
+
 The `--image-tag-value-path` tells Serenity which Helm value to override during rendering — the dot-notation path into the values file that becomes the literal image reference in the rendered YAML.
+
+### Job 3 — `deploy_application`: merge the gitops PR with `serenity approve`
+
+After the human approves `can_d_staging` or `can_d_prod`, this job runs:
+
+```bash
+serenity approve \
+  --config-file="k8s/agent-gateway/serenity.yaml" \
+  --env="staging"  # or "production"
+  --wait=true
+```
+
+`serenity approve` finds the open PR that `serenity sync` created for that environment and merges it into `{env}/live`. ArgoCD then detects the new commit and syncs the cluster.
+
+**Deployment order constraint**: For both staging and production, agent-gateway is deployed last — it requires `d_mcp-config-service` and `d_multitenant-mcp-service` to complete first. This ensures mcp-config-service (which agent-gateway depends on to fetch configs) is running the new version before agent-gateway starts forwarding traffic.
 
 ### The CircleCI workspace — how data passes between jobs
 
 CircleCI jobs are isolated — they don't share a filesystem by default. The **workspace** is the mechanism for passing files between jobs in a pipeline:
 
 ```
-b_backend (push)                    d_backend
-    ↓                                   ↑
-writes digest to                    reads digest from
-.circleci/_docker_image_digests/    .circleci/_docker_image_digests/
-agent-gateway-api                   agent-gateway-api
-    ↓                                   ↑
-persist_to_workspace ──────────── attach_build_workspace
+build_application (push)            sync_application / deploy_application
+    ↓                                          ↑
+writes digest to                     reads digest from
+.circleci/_docker_image_digests/     .circleci/_docker_image_digests/
+agent-gateway-api                    agent-gateway-api
+    ↓                                          ↑
+persist_to_workspace ────────── attach_build_workspace
 ```
 
-### Why two separate approval gates?
+### Why three separate approval gates?
 
-- `can_d_all` — gates the image push. You don't want to push an image you haven't decided to deploy yet.
-- `can_d_staging` / `can_d_prod` — gates the actual deployment. Lets you deploy to staging first, verify, then promote to production independently.
+- `can_d` — gates the image push. You don't want to push an image you haven't decided to deploy yet.
+- `can_d_staging` / `can_d_prod` — gates the PR merge. `serenity sync` has already created the PRs in uaa-gitops at this point; these approvals control when they get merged (and therefore when ArgoCD syncs).
 - `can_d_prod` is also filtered to the default branch (`main`) only — you can't accidentally deploy a feature branch to production.
 
 ---
@@ -580,25 +609,33 @@ persist_to_workspace ──────────── attach_build_workspace
 --- CircleCI pipeline starts automatically ---
 
 3.  Tests, typecheck, lint run in parallel
-4.  b_backend (build only) — confirms Docker build works, no push yet
-5.  ▶ MANUAL APPROVAL: can_d_all
-6.  b_backend (push) — pushes image to GCR (:latest and :<commit-sha> tags),
-    fetches the SHA digest, persists it to the CircleCI workspace
-7.  ▶ MANUAL APPROVAL: can_d_staging
-8.  d_backend (staging) — reads digest, calls serenity sync (--sideload=true)
-    Serenity re-renders the Helm chart, commits manifest.yaml to
-    staging/agent-gateway in uaa-gitops, opens PR → staging/live, auto-merges
-9.  ArgoCD detects commit on staging/live, syncs both staging clusters
-10. Kubernetes rolling restart with new image
+4.  build_application x3 (build only) — confirms Docker builds work, no push yet
+5.  ▶ MANUAL APPROVAL: can_d
+6.  build_application x3 (push) — pushes all 3 service images to GCR
+    (:latest and :<commit-sha> tags), fetches SHA digests, persists to workspace
+7.  sync_application x3 — calls serenity sync for each service
+    Serenity re-renders the Helm chart, commits manifest.yaml for ALL clusters
+    (both staging and production) to uaa-gitops, opens PRs:
+      staging/agent-gateway → staging/live
+      production/agent-gateway → production/live
+    PRs are open but NOT yet merged
+
+--- PRs exist in uaa-gitops, waiting for approval ---
+
+8.  ▶ MANUAL APPROVAL: can_d_staging
+9.  deploy_application staging x3 (in order: mcp-config, multitenant, agent-gateway)
+    Each calls serenity approve --env=staging, which merges the staging PR
+10. ArgoCD detects commits on staging/live, syncs both staging clusters
+11. Kubernetes rolling restart with new image
 
 --- Staging verified ---
 
-11. ▶ MANUAL APPROVAL: can_d_prod (main branch only)
-12. d_backend (production) — same serenity sync with --sideload=false
-    Serenity opens PR on uaa-gitops (production/agent-gateway → production/live), merges it
-13. ArgoCD detects commit on production/live, syncs both production clusters
-14. New pods come up with new image, old pods terminated
-15. Slack notification: ":tada: Agent Gateway deployed to production"
+12. ▶ MANUAL APPROVAL: can_d_prod (main branch only)
+13. deploy_application production x3 (same order: mcp-config, multitenant, agent-gateway)
+    Each calls serenity approve --env=production, which merges the production PR
+14. ArgoCD detects commits on production/live, syncs all 5 production clusters
+15. New pods come up with new image, old pods terminated
+16. Slack notification: ":tada: Agent Gateway deployed to production"
 ```
 
 ### Case 2: Chart change (adding HPA, changing resource limits, new ConfigMap)
@@ -613,24 +650,27 @@ No Serenity involved. This is a direct manifest change.
 
 ### What a Serenity PR looks like
 
-For a **new image build** (PR #154 pattern):
+PR title format:
+
+```
+agent-gateway ➮ staging ⦗📦 e120a7af24ac64093939a7c2cbd99f1cb5b2a82868256990da2efb3c08c09801⦘
+```
+
+The SHA in the title is the Docker image digest — not the git commit SHA. This is the only thing that identifies the deployment in the PR title.
+
+The diff inside the PR:
 
 ```diff
-# Both image references updated
+# Image reference updated across all staging clusters
 - image: gcr.io/.../agent-gateway-api@sha256:36242989...
 + image: gcr.io/.../agent-gateway-api@sha256:474f6035...
 
 # Restart annotation bumped
-+ rollout/restartedAt: "2026-03-17T09:00:35Z"
-```
-
-For a **restart-only** (PR #161 pattern — image already updated separately):
-
-```diff
-# Only the timestamp changes
 - rollout/restartedAt: "2026-03-16T15:22:25Z"
 + rollout/restartedAt: "2026-03-17T09:00:35Z"
 ```
+
+Note: `serenity sync` creates both the staging PR and the production PR at the same time (from a single `sync_application` CI job). Both PRs show up in `uaa-gitops` as open simultaneously. `serenity approve` merges them independently — staging first, production later.
 
 ---
 
@@ -742,13 +782,15 @@ This is a safe-deploy pattern: the database schema migration is always guarantee
 
 ### Something looks wrong after a deploy — how to roll back
 
-With auto-sync enabled, clicking "Rollback" in the ArgoCD UI does nothing lasting — ArgoCD immediately re-syncs to the latest Git commit. The only real rollback is reverting the Serenity commit in `uaa-gitops`:
+With auto-sync enabled, clicking "Rollback" in the ArgoCD UI does nothing lasting — ArgoCD immediately re-syncs to the latest Git commit. The only real rollback is reverting the Serenity merge commit in `uaa-gitops`:
 
 ```bash
 # in uaa-gitops
-git revert <serenity-commit-sha>
+git revert <serenity-merge-commit-sha>
 git push  # ArgoCD auto-syncs to the reverted state
 ```
+
+If you need to cancel a deployment that's been synced but not yet approved for production: the production PR exists in `uaa-gitops` as an open PR (created by `serenity sync`). You can close it before running `serenity approve`, and production will never be updated. The staging deployment has already happened at this point.
 
 The **History and Rollback** button is still useful for reading what was deployed at each sync point.
 
